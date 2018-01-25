@@ -1,7 +1,7 @@
 require 'restforce'
 require 'json'
 require 'active_support/all'
-require File.join(File.dirname(__FILE__), 'web_sync', 'oauth_token')
+require_relative 'web_sync/oauth_token'
 
 # Interact with Salesforce. Method included for setting intro call date
 #
@@ -31,6 +31,15 @@ class SalesforceSync
   def set_intro_date_for_contact(contact:, date:)
     contact.Intro_Call_RSVP_Date__c = date.rfc3339
     contact.save
+  end
+
+  # fast lookup by ID of only the fields we need for sync
+  def contact_by_id(id:)
+    client.select('Contact', id, %w(Id Email Name LastName Alternate_Email__c), 'Id')
+  end
+
+  def contact_all_fields(id:)
+    @client.find('Contact', id)
   end
 
   private

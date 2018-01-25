@@ -12,4 +12,5 @@ gem 'activesupport', '~> 5.0', '>= 5.0.0.1'
 
 gem 'awesome_print', '~> 1.8'
 gem 'faye-websocket', '~> 0.10.7'
-gem 'faye', '~> 1.2', '>= 1.2.4'
+# gem 'faye', '~> 1.2', '>= 1.2.4'
+gem 'faye', '0.8.9'

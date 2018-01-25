@@ -1,7 +1,7 @@
 require 'rest-client'
 require 'json'
 require 'active_support/all'
-require File.join(File.dirname(__FILE__), 'web_sync', 'json_web_token')
+require_relative'web_sync/json_web_token'
 
 # Time.now.iso8601 - for date/time format
 # Date.today.to_s - for date only format
