@@ -12,6 +12,8 @@ require File.join(File.dirname(__FILE__), 'web_sync', 'oauth_token')
 class SalesforceSync
   API_VERSION = '38.0'
   SANDBOX_HOST = 'test.salesforce.com'
+  attr_accessor :client
+  attr_accessor :token
 
   def initialize
     @token = OauthToken.salesforce_token
