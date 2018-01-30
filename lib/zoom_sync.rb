@@ -40,6 +40,10 @@ class ZoomSync
     call(endpoint: 'report/users/', params: {from: from.to_s, to: to.to_s})
   end
 
+  def all_users
+    call(endpoint: 'users/')
+  end
+
   def meeting_participants_report(meeting_id:)
     call(endpoint: "report/meetings/#{meeting_id}/participants")
   end

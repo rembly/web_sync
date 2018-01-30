@@ -20,7 +20,7 @@ class SalesforceSync
     @client = initialize_client(@token)
   end
 
-  def all_clients
+  def all_contacts
     @client.query("SELECT Id, FirstName, LastName, Birthdate, Email, Intro_Call_RSVP_Date__c FROM Contact")
   end
 
