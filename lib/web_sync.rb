@@ -22,15 +22,17 @@ class WebSync
     EM.run do
       @salesforce_client.client.subscribe PUBSUB_TOPIC do |message|
         log_salesforce_update(message)
+        if add_update_event?(message)
+          sf_user = lookup_salesforce_user(message.dig('sobject', 'Id'))
+          if add_user_to_zoom?(sf_user)
+            LOG.info("SF user not found in zoom. Adding to Zoom")
+            @zoom_client.add_sf_user(sf_user)
+          end
+        else
+          LOG.info("SF delete action, remove user from zoom")
+        end
       end
     end
-  end
-
-  # messages look like: {"event"=>{"createdDate"=>"2018-01-25T13:18:00.896Z", "replayId"=>7, "type"=>"updated"}, "sobject"=>{"Email"=>"[primary_email]",
-  # "Welcome_Email_Sent__c"=>true, "Alternate_Email__c"=>"[alternate_email]", "Id"=>"[Id]", "Birthdate"=>"1979-02-12T00:00:00.000Z"}}
-  def log_salesforce_update(message)
-    LOG.info("Message Received. User updated: #{message.inspect}")
-    message.dig('sobject', 'Id').tap(&method(:lookup_salesforce_user))
   end
 
   private
@@ -60,6 +62,13 @@ class WebSync
   def sf_user_not_in_zoom?(user)
     # should we log if a user's email is in zoom but the name doesn't match?
     @zoom_users.none?{|zoom_user| user.try(:Email).to_s.casecmp(zoom_user['email']).zero?}
+  end
+
+  # messages look like: {"event"=>{"createdDate"=>"2018-01-25T13:18:00.896Z", "replayId"=>7, "type"=>"updated"}, "sobject"=>{"Email"=>"[primary_email]",
+  # "Welcome_Email_Sent__c"=>true, "Alternate_Email__c"=>"[alternate_email]", "Id"=>"[Id]", "Birthdate"=>"1979-02-12T00:00:00.000Z"}}
+  def log_salesforce_update(message)
+    LOG.info("Message Received. User updated: #{message.inspect}")
+    message.dig('sobject', 'Id').tap(&method(:lookup_salesforce_user))
   end
 
 end
