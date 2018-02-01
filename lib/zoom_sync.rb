@@ -8,6 +8,7 @@ require_relative'web_sync/json_web_token'
 # require File.join(File.dirname(__FILE__), 'lib', 'zoom_sync')
 class ZoomSync
   ZOOM_API_URL = 'https://api.zoom.us/v2/'
+  BASIC_USER_TYPE = 1
 
   def initialize
     @zoom_web_token = JsonWebToken.zoom_token
@@ -19,6 +20,12 @@ class ZoomSync
     response = RestClient.get(base_uri, {params: params})
     JSON.parse(response)
   end
+
+  def post(endpoint:, data:)
+    base_uri = URI.join(ZOOM_API_URL, endpoint).to_s
+    RestClient.post(base_uri, data.to_json, {content_type: :json, accept: :json, Authorization: "Bearer #{@zoom_web_token}"})
+  end
+
 
   def meeting_report_for(from: Date.today - 2.months, to: Date.today - 1.month)
     call(endpoint: 'metrics/meetings', params: {from: from.to_s, to: to.to_s })
@@ -46,5 +53,18 @@ class ZoomSync
 
   def meeting_participants_report(meeting_id:)
     call(endpoint: "report/meetings/#{meeting_id}/participants")
+  end
+
+  # this will send an invite to the passed in SF user's primary email to join zoom
+  def add_salesforce_user_to_zoom(sf_user:)
+    post(endpoint: 'users/', data:
+         {action: 'create',
+          user_info: {
+            email: sf_user.Email,
+            type: BASIC_USER_TYPE,
+            first_name: sf_user.FirstName,
+            last_name: sf_user.LastName,
+          }
+        })
   end
 end
