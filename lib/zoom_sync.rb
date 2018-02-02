@@ -8,7 +8,7 @@ require_relative'web_sync/json_web_token'
 # require File.join(File.dirname(__FILE__), 'lib', 'zoom_sync')
 class ZoomSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync.log'))
-  ZOOM_API_URL = 'https://api.zoom.us/v2/'
+  ZOOM_API_URs = 'https://api.zoom.us/v2/'
   BASIC_USER_TYPE = 1
 
   def initialize
@@ -24,10 +24,8 @@ class ZoomSync
 
   def post(endpoint:, data:)
     base_uri = URI.join(ZOOM_API_URL, endpoint).to_s
-    # TODO: uncomment to enable zoom account creation.
-    # Account creation will send email to client
+    # TODO: uncomment to enable zoom account creation. Account creation will send email to client
     #RestClient.post(base_uri, data.to_json, {content_type: :json, accept: :json, Authorization: "Bearer #{@zoom_web_token}"})
-    
     LOG.info("Zoom client to be created: #{data}")
   end
 
