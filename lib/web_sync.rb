@@ -8,12 +8,12 @@ class WebSync
   EMAIL_NOTIFICATION_TO = ENV['EMAIL_NOTIFICATION_TO']
   PUBSUB_TOPIC = 'ContactUpdated'
 
-  attr_accessor :salesforce_client
+  attr_accessor :sf
   attr_accessor :zoom_client
   attr_accessor :zoom_users
 
   def initialize
-    @salesforce_client = SalesforceSync.new
+    @sf = SalesforceSync.new
     @zoom_client = ZoomSync.new
     set_zoom_users
     start_sync_job
@@ -23,7 +23,7 @@ class WebSync
   # TODO: separate thread
   def start_sync_job
     EM.run do
-      @salesforce_client.client.subscribe PUBSUB_TOPIC do |message|
+      @sf.client.subscribe PUBSUB_TOPIC do |message|
         log_salesforce_push_update(message)
         if add_update_event?(message)
           sf_user = lookup_salesforce_user(message.dig('sobject', 'Id'))
@@ -41,15 +41,25 @@ class WebSync
 
   private
 
+  def add_update_event?(message)
+    #verify create type
+    %w(updated created).include?(message.dig('event', 'type'))
+  end
+
+  def delete_event?(message)
+    # verify delete type
+    %w(deleted).include?(message.dig('event', 'type'))
+  end
+
   def lookup_salesforce_user(id)
-    user = @salesforce_client.contact_by_id(id: id)
+    user = @sf.contact_by_id(id: id)
     LOG.info("User found in salesforce: #{user.inspect}")
   end
 
   # Push notification goes to PHP script for any contact where Intro Call RSVP Date has been set or updated to today 
   # (including new Contacts where that is set on creation)
-  def add_user_to_zoom?(sf_user:)
-    valid_user_for_zoom?(user) && !sf_user_in_zoom?(user)
+  def add_user_to_zoom?(sf_user)
+    valid_user_for_zoom?(sf_user) && !sf_user_in_zoom?(sf_user)
   end
 
   # cache all zoom users, use this rather than re-querying. Maybe only need email address.. for now get everything
@@ -61,22 +71,12 @@ class WebSync
   # SF user has all necessary fields and has intro call date set
   def valid_user_for_zoom?(sf_user)
     [sf_user.try(:FirstName), sf_user.try(:LastName), sf_user.try(:Email)].all?(&:present?) && 
-      valid_intro_call_date?(sf_user)
+      @sf.valid_intro_call_date?(sf_user)
   end
 
   def sf_user_in_zoom?(sf_user)
     # should we log if a user's email is in zoom but the name doesn't match? Or if an alternate email matches but not primary?
     zoom_user_from_sf_user(sf_user).present?
-  end
-
-  def valid_intro_call_date?(sf_user)
-    rsvp_field = SalesforceSync::INTRO_CALL_RSVP_FIELD.to_sym
-    intro_date = SalesforceSync::INTRO_CALL_DATE_FIELD.to_sym
-    if sf_user.try(rsvp_field).present?
-      rsvp_date = sf_user.try(rsvp_field).to_date
-      intro_date = sf_user.try(intro_date).present? ? sf_user.try(intro_date).to_date : nil
-      return intro_date.empty? || ((rsvp_date > intro_date + 1.day) && (rsvp_date > Date.today - 30.days))
-    end
   end
 
   def zoom_user_from_sf_user(sf_user)

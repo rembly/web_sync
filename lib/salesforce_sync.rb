@@ -48,6 +48,16 @@ class SalesforceSync
     @client.find('Contact', id)
   end
 
+  def valid_intro_call_date?(sf_user)
+    rsvp_field = INTRO_CALL_RSVP_FIELD.to_sym
+    intro_date = INTRO_CALL_DATE_FIELD.to_sym
+    if sf_user.try(rsvp_field).present?
+      rsvp_date = sf_user.try(rsvp_field).to_date
+      intro_date = sf_user.try(intro_date).present? ? sf_user.try(intro_date).to_date : nil
+      return intro_date.empty? || ((rsvp_date > intro_date + 1.day) && (rsvp_date > Date.today - 30.days))
+    end
+  end
+
   private
 
   def initialize_client(token)

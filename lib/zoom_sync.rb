@@ -8,7 +8,7 @@ require_relative'web_sync/json_web_token'
 # require File.join(File.dirname(__FILE__), 'lib', 'zoom_sync')
 class ZoomSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync.log'))
-  ZOOM_API_URs = 'https://api.zoom.us/v2/'
+  ZOOM_API_URL = 'https://api.zoom.us/v2/'
   BASIC_USER_TYPE = 1
 
   def initialize
