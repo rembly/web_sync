@@ -15,6 +15,12 @@ class SalesforceSync
   attr_accessor :client
   attr_accessor :token
 
+  DATE_OF_INTRO_CALL_FIELD = 'Date_of_Intro_Call__c'
+  INTRO_CALL_RSVP_FIELD = 'Intro_Call_RSVP_Date__c'
+  INTRO_CALL_DATE_FIELD = 'Date_of_Intro_Call__c'
+  EMAIL_FIELDS = %w(Email Alternate_Email__c CCL_Email_Three__c CCL_Email_Four__c)
+  PHONE_FIELDS = %w(Phone HomePhone Mobile_Phone_Formatted2__c)
+
   def initialize
     @token = OauthToken.salesforce_token
     @client = initialize_client(@token)
