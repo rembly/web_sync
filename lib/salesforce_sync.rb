@@ -19,7 +19,8 @@ class SalesforceSync
   INTRO_CALL_DATE_FIELD = 'Date_of_Intro_Call__c'
   EMAIL_FIELDS = %w(Email Alternate_Email__c CCL_Email_Three__c CCL_Email_Four__c)
   PHONE_FIELDS = %w(Phone HomePhone Mobile_Phone_Formatted2__c)
-  SELECT_FIELDS = ['Id', 'Name', 'FirstName', 'LastName', *PHONE_FIELDS, *EMAIL_FIELDS, INTRO_CALL_DATE_FIELD, INTRO_CALL_RSVP_FIELD]
+  REQUIRED_FIELDS = %w(Id FirstName LastName)
+  SELECT_FIELDS = [*REQUIRED_FIELDS, *PHONE_FIELDS, *EMAIL_FIELDS, INTRO_CALL_DATE_FIELD, INTRO_CALL_RSVP_FIELD]
 
   def initialize
     @token = OauthToken.salesforce_token
@@ -28,6 +29,29 @@ class SalesforceSync
 
   def all_contacts
     @client.query("SELECT Id, FirstName, LastName, Birthdate, Email, Intro_Call_RSVP_Date__c FROM Contact")
+  end
+
+  def contacts_eligible_for_zoom
+    contacts = @client.query(<<-QUERY)
+      SELECT #{SELECT_FIELDS.join(', ')}
+      FROM Contact
+      WHERE Intro_Call_RSVP_Date__c != null AND Intro_Call_RSVP_Date__c >= #{(Date.today - 30.days).rfc3339}
+      AND (#{one_field_present_for(EMAIL_FIELDS)}) 
+      AND (#{all_fields_present_for(REQUIRED_FIELDS)})
+    QUERY
+
+    # we can't completely filter with SQL, double check RSVP date relative to intro call
+    contacts.select(&method(:valid_intro_call_date?))
+  end
+
+  def sf_users_for_zoom_users(zoom_users)
+    email_list = zoom_users.map{|zu| zu.dig('email')}.compact.join(', ')
+
+    contacts = @client.query(<<-QUERY)
+      SELECT #{SELECT_FIELDS.join(', ')}
+      FROM Contact
+      WHERE Email IN(#{email_list}) OR Alternate_Email__c IN (#{email_list})
+    QUERY
   end
 
   def set_intro_call_date(contact_id:, date:)
@@ -77,6 +101,14 @@ class SalesforceSync
   end
 
   private
+
+  def one_field_present_for(fields)
+    fields.collect{|field_name| "#{field_name} != null"}.join(' OR ')
+  end
+
+  def all_fields_present_for(fields)
+    fields.collect{|field_name| "#{field_name} != null"}.join(' AND ')
+  end
 
   def initialize_client(token)
     # todo: sandbox host is for dev only

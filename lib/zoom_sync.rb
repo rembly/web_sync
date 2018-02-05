@@ -11,6 +11,9 @@ class ZoomSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync.log'))
   ZOOM_API_URL = 'https://api.zoom.us/v2/'
   BASIC_USER_TYPE = 1
+  # TODO: update with actual intro call ID when available
+  INTRO_CALL_MEETING_ID = '2017201719'
+  MINIMUM_DURATION_FOR_INTRO_CALL = 10 # minutes
 
   def initialize
     @zoom_web_token = JsonWebToken.zoom_token
@@ -69,6 +72,12 @@ class ZoomSync
     call(endpoint: "report/meetings/#{meeting_id}/participants")
   end
 
+  def valid_intro_call_meeting_participants
+    # this may need to deal with pages. Also we do not have an intro call ID yet
+    results = meeting_participants_report(meeting_id: INTRO_CALL_MEETING_ID)
+    results.dig('participants').select(&method(:valid_intro_call_duration)).select(&method(:valid_zoom_user_for_sf?))
+  end
+
   # this will send an invite to the passed in SF user's primary email to join zoom
   def add_sf_user(sf_user)
     LOG.info("SF user not found in zoom. Adding to Zoom")
@@ -81,5 +90,15 @@ class ZoomSync
             last_name: sf_user.LastName,
           }
         })
+  end
+
+  private
+
+  def valid_intro_call_duration(participant)
+    participant.dig('duration').to_i >= MINIMUM_DURATION_FOR_INTRO_CALL
+  end
+
+  def valid_zoom_user_for_sf?(participant)
+    participant.dig('user_email').present?
   end
 end

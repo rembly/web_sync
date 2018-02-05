@@ -17,6 +17,26 @@ class SalesforceZoomSync
     @sf = SalesforceSync.new
     @zoom_client = ZoomSync.new
     set_zoom_users
+    sync_sf_updates_to_zoom
+    sync_zoom_updates_to_sf
+  end
+
+  def sync_sf_users_to_zoom
+    # get SF users eligible to be added to zoom based on intro call date and rsvp
+    eligible_sf_users = @sf.contacts_eligible_for_zoom
+    # add eligibile sf users to zoom if necessary
+    eligible_sf_users.select(&method(:sf_user_not_in_zoom?)).each{|user_to_add| @zoom_client.add_sf_user(user_to_add)}
+  end
+
+  def sync_zoom_updates_to_sf
+    # get all zoom users who have watched the most recent intro call for more than the minimum duration
+    participants = @zoom_client.valid_intro_call_meeting_participants
+
+    # get all SF users matching those participants
+    # hash with zoom -> sf user
+    matching_users = @sf.sf_users_for_zoom_users(partcipants)
+
+    # set the intro call date based for those users
   end
 
   private
@@ -27,10 +47,8 @@ class SalesforceZoomSync
     @zoom_users = @zoom_client.all_users['users']
   end
 
-  # SF user has all necessary fields and has intro call date set
-  def valid_user_for_zoom?(sf_user)
-    [sf_user.try(:FirstName), sf_user.try(:LastName), sf_user.try(:Email)].all?(&:present?) && 
-      @sf.valid_intro_call_date?(sf_user)
+  def sf_user_not_in_zoom?(sf_user)
+    ! sf_user_in_zoom?(sf_user)
   end
 
   def sf_user_in_zoom?(sf_user)
@@ -40,13 +58,6 @@ class SalesforceZoomSync
 
   def zoom_user_from_sf_user(sf_user)
     @zoom_users.find{|zoom_user| sf_user.try(:Email).to_s.casecmp(zoom_user['email']).zero?}
-  end
-
-  # messages look like: {"event"=>{"createdDate"=>"2018-01-25T13:18:00.896Z", "replayId"=>7, "type"=>"updated"}, "sobject"=>{"Email"=>"[primary_email]",
-  # "Welcome_Email_Sent__c"=>true, "Alternate_Email__c"=>"[alternate_email]", "Id"=>"[Id]", "Birthdate"=>"1979-02-12T00:00:00.000Z"}}
-  def log_salesforce_push_update(message)
-    LOG.info("Message Received. User updated: #{message.inspect}")
-    # message.dig('sobject', 'Id').tap(&method(:lookup_salesforce_user))
   end
 
 end
