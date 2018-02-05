@@ -2,6 +2,7 @@ require 'rest-client'
 require 'json'
 require 'active_support/all'
 require_relative'web_sync/json_web_token'
+require_relative './salesforce_sync'
 
 # Time.now.iso8601 - for date/time format
 # Date.today.to_s - for date only format
@@ -69,11 +70,12 @@ class ZoomSync
   end
 
   # this will send an invite to the passed in SF user's primary email to join zoom
-  def add_sf_user(sf_user:)
+  def add_sf_user(sf_user)
+    LOG.info("SF user not found in zoom. Adding to Zoom")
     post(endpoint: 'users/', data:
          {action: 'create',
           user_info: {
-            email: sf_user.Email,
+            email: SalesforceSync.primary_email(sf_user),
             type: BASIC_USER_TYPE,
             first_name: sf_user.FirstName,
             last_name: sf_user.LastName,

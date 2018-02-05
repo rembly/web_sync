@@ -15,11 +15,11 @@ class SalesforceSync
   attr_accessor :client
   attr_accessor :token
 
-  DATE_OF_INTRO_CALL_FIELD = 'Date_of_Intro_Call__c'
   INTRO_CALL_RSVP_FIELD = 'Intro_Call_RSVP_Date__c'
   INTRO_CALL_DATE_FIELD = 'Date_of_Intro_Call__c'
   EMAIL_FIELDS = %w(Email Alternate_Email__c CCL_Email_Three__c CCL_Email_Four__c)
   PHONE_FIELDS = %w(Phone HomePhone Mobile_Phone_Formatted2__c)
+  SELECT_FIELDS = ['Id', 'Name', 'FirstName', 'LastName', *PHONE_FIELDS, *EMAIL_FIELDS, INTRO_CALL_DATE_FIELD, INTRO_CALL_RSVP_FIELD]
 
   def initialize
     @token = OauthToken.salesforce_token
@@ -41,7 +41,7 @@ class SalesforceSync
 
   # fast lookup by ID of only the fields we need for sync
   def contact_by_id(id:)
-    client.select('Contact', id, %w(Id Email Name LastName Alternate_Email__c), 'Id')
+    client.select('Contact', id, SELECT_FIELDS, 'Id')
   end
 
   def contact_all_fields(id:)
@@ -54,8 +54,26 @@ class SalesforceSync
     if sf_user.try(rsvp_field).present?
       rsvp_date = sf_user.try(rsvp_field).to_date
       intro_date = sf_user.try(intro_date).present? ? sf_user.try(intro_date).to_date : nil
-      return intro_date.empty? || ((rsvp_date > intro_date + 1.day) && (rsvp_date > Date.today - 30.days))
+      return intro_date.blank? || ((rsvp_date > intro_date + 1.day) && (rsvp_date > Date.today - 30.days))
     end
+  end
+
+  def self.user_has_email_address?(sf_user)
+    EMAIL_FIELDS.map(&:to_sym).any?{|email_field| sf_user.try(email_field).present?}
+  end
+
+  def self.all_emails_for_user(sf_user)
+    EMAIL_FIELDS.map(&:to_sym).collect{|email_field| sf_user.try(email_field)}.compact
+  end
+
+  # move from Email to CCL Email 4 picking the first one
+  def self.primary_email(sf_user)
+    self.all_emails_for_user(sf_user).try(:first)
+  end
+
+  # create user object from push message
+  def self.sf_message_user(push_message)
+    JSON.parse(push_message['sobject'].to_json, object_class: OpenStruct)
   end
 
   private
