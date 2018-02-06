@@ -1,29 +1,46 @@
 require 'rest-client'
 require 'json'
 require 'active_support/all'
-require_relative'web_sync/json_web_token'
+require_relative 'web_sync/json_web_token'
 require_relative './salesforce_sync'
 
+# Class for interacting with Zoom API
+#
 # Time.now.iso8601 - for date/time format
 # Date.today.to_s - for date only format
-# require File.join(File.dirname(__FILE__), 'lib', 'zoom_sync')
 class ZoomSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync.log'))
   ZOOM_API_URL = 'https://api.zoom.us/v2/'
+  MAX_CALLS_PER_SECOND = 1.2 # 1 second limit plus buffer
+  HALT_CALL_QUEUE_SIGNAL = :stop
   BASIC_USER_TYPE = 1
   # TODO: update with actual intro call ID when available
   INTRO_CALL_MEETING_ID = '2017201719'
   MINIMUM_DURATION_FOR_INTRO_CALL = 10 # minutes
 
+  # queue for rate_limited api calls
+  attr_reader :call_queue
+
+  # fetches authentication token and starts thread for call queue
   def initialize
     @zoom_web_token = JsonWebToken.zoom_token
+    @call_queue = Queue.new
+    start_request_queue_consumer
   end
 
   def call(endpoint:, params: {})
     base_uri = URI.join(ZOOM_API_URL, endpoint).to_s
-    params = params.merge({access_token: @zoom_web_token})
-    response = RestClient.get(base_uri, {params: params})
+    params = params.merge({ access_token: @zoom_web_token })
+    response = RestClient.get(base_uri, { params: params })
     JSON.parse(response)
+  end
+
+  # schedule call for later, taking API limit into account. Passes results of call to callback
+  def queue_call(endpoint:, params:, &callback)
+    @call_queue << lambda {
+      results = call(endpoint: endpoint, params: params)
+      callback.call(results)
+    }
   end
 
   def post(endpoint:, data:)
@@ -33,15 +50,27 @@ class ZoomSync
     LOG.info("Zoom client to be created: #{data}")
   end
 
+  # schedule update for later, taking API limit into account. Passes results of update to optional callback
+  def queue_post(endpoint:, data:, &callback)
+    @call_queue << lambda {
+      results = post(endpoint: endpoint, data: data)
+      callback.call(results) if callback.present?
+    }
+  end
+
   def remove_user!(user_id_or_email:)
-    user_path = ZOOM_API_URL + "users/#{user_id_or_email}"
-    #results = RestClient.delete(user_path, {accept: :json, Authorization: "Bearer #{@zoom_web_token}"})
-    LOG.info("Zoom user to delete: #{user_path}")
-    #LOG.info("Results: #{results}")
+    @call_queue << lambda {
+      user_path = ZOOM_API_URL + "users/#{user_id_or_email}"
+      # TODO: uncomment to actually remove users. For now just log the request
+      #results = RestClient.delete(user_path, {accept: :json, Authorization: "Bearer #{@zoom_web_token}"})
+      #LOG.info("Results: #{results}")
+      LOG.info("Zoom user to delete: #{user_path}")
+      p "Calling delete user: #{user_path}"
+    }
   end
 
   def meeting_report_for(from: Date.today - 2.months, to: Date.today - 1.month)
-    call(endpoint: 'metrics/meetings', params: {from: from.to_s, to: to.to_s })
+    call(endpoint: 'metrics/meetings', params: { from: from.to_s, to: to.to_s })
   end
 
   def meeting_instance(meeting_id:)
@@ -53,11 +82,11 @@ class ZoomSync
   end
 
   def daily_report(date: Date.today - 1.month)
-    call(endpoint: 'report/daily/', params: {year: date.year, month: date.month})
+    call(endpoint: 'report/daily/', params: { year: date.year, month: date.month })
   end
 
   def users_report(from: Date.today - 2.months, to: Date.today - 1.month)
-    call(endpoint: 'report/users/', params: {from: from.to_s, to: to.to_s})
+    call(endpoint: 'report/users/', params: { from: from.to_s, to: to.to_s })
   end
 
   def fetch_user(user_id:)
@@ -84,15 +113,33 @@ class ZoomSync
   # this will send an invite to the passed in SF user's primary email to join zoom
   def add_sf_user(sf_user)
     LOG.info("SF user not found in zoom. Adding to Zoom")
-    post(endpoint: 'users/', data:
-         {action: 'create',
-          user_info: {
-            email: SalesforceSync.primary_email(sf_user),
-            type: BASIC_USER_TYPE,
-            first_name: sf_user.FirstName,
-            last_name: sf_user.LastName,
-          }
-        })
+    data = { action: 'create',
+             user_info: {
+                 email: SalesforceSync.primary_email(sf_user),
+                 type: BASIC_USER_TYPE,
+                 first_name: sf_user.FirstName,
+                 last_name: sf_user.LastName,
+             }
+    }
+
+    queue_post(endpoint: 'users/', data: data) { |results| LOG.debug("Post results: #{results}") }
+  end
+
+  def stop_request_queue_consumer
+    @call_queue << HALT_CALL_QUEUE_SIGNAL
+  end
+
+  private
+
+  # take API calls from the call queue and execute with API limits. Consumer expects callable object
+  def start_request_queue_consumer
+    Thread.new do
+      while (call_request = @call_queue.pop) != HALT_CALL_QUEUE_SIGNAL
+        LOG.debug('Executing call request')
+        call_request.call()
+        sleep MAX_CALLS_PER_SECOND
+      end
+    end
   end
 
 end

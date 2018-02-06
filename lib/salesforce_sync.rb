@@ -63,8 +63,9 @@ class SalesforceSync
 
   def set_intro_date_for_contact(contact:, date:)
     if contact.present? && (contact.Date_of_Intro_Call__c.blank? || contact.Intro_Call_RSVP_Date__c.to_date < date)
-    contact.Date_of_Intro_Call__c = date.rfc3339
-    contact.save
+      contact.Date_of_Intro_Call__c = date.rfc3339
+      contact.save
+    end
   end
 
   # fast lookup by ID of only the fields we need for sync
