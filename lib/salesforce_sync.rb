@@ -45,13 +45,16 @@ class SalesforceSync
   end
 
   def sf_users_for_zoom_users(zoom_users)
-    email_list = zoom_users.map{|zu| zu.dig('email')}.compact.join(', ')
+    email_list = zoom_users.map{|zoom_user| zoom_user.dig('email')}.compact.join(', ')
 
-    contacts = @client.query(<<-QUERY)
+    matched_contacts = @client.query(<<-QUERY)
       SELECT #{SELECT_FIELDS.join(', ')}
       FROM Contact
-      WHERE Email IN(#{email_list}) OR Alternate_Email__c IN (#{email_list})
+      WHERE #{quoted_email_list(email_list)}
     QUERY
+    
+    LOG.info("#{matched_contacts.size} found in SF for Zoom update")
+    matched_contacts
   end
 
   def set_intro_call_date(contact_id:, date:)
@@ -59,7 +62,8 @@ class SalesforceSync
   end
 
   def set_intro_date_for_contact(contact:, date:)
-    contact.Intro_Call_RSVP_Date__c = date.rfc3339
+    if contact.present? && (contact.Date_of_Intro_Call__c.blank? || contact.Intro_Call_RSVP_Date__c.to_date < date)
+    contact.Date_of_Intro_Call__c = date.rfc3339
     contact.save
   end
 
@@ -101,6 +105,11 @@ class SalesforceSync
   end
 
   private
+
+  def quoted_email_list(email_list)
+    quoted_list = email_list.collect{|email| "'#{email}'"}.join(', ')
+    EMAIL_FIELDS.collect{|field_name| "#{field_name} IN (#{quoted_list})"}.join(' AND ')
+  end
 
   def one_field_present_for(fields)
     fields.collect{|field_name| "#{field_name} != null"}.join(' OR ')

@@ -30,13 +30,21 @@ class SalesforceZoomSync
 
   def sync_zoom_updates_to_sf
     # get all zoom users who have watched the most recent intro call for more than the minimum duration
-    participants = @zoom_client.valid_intro_call_meeting_participants
+    intro_details = @zoom_client.intro_call_details
+    intro_call_date = intro_details['start_time'].to_date
+    intro_call = @zoom_client.meeting_participants_report(meeting_id: intro_details['uuid'])
+    participants = intro_call.dig('participants').
+                    select(&method(:valid_intro_call_duration)).
+                    select(&method(:valid_zoom_user_for_sf?))
 
     # get all SF users matching those participants
     # hash with zoom -> sf user
-    matching_users = @sf.sf_users_for_zoom_users(partcipants)
+    matched_users = @sf.sf_users_for_zoom_users(participants)
 
-    # set the intro call date based for those users
+    # set the intro call date based for those users. TODO: may need to output multiple users found for same email etc..
+    matched_users.each do |user|
+      @sf.set_intro_date_for_contact(contact: user, date: intro_call_date)
+    end
   end
 
   private
@@ -58,6 +66,14 @@ class SalesforceZoomSync
 
   def zoom_user_from_sf_user(sf_user)
     @zoom_users.find{|zoom_user| sf_user.try(:Email).to_s.casecmp(zoom_user['email']).zero?}
+  end
+
+  def valid_intro_call_duration(participant)
+    participant.dig('duration').to_i >= ZoomSync::MINIMUM_DURATION_FOR_INTRO_CALL
+  end
+
+  def valid_zoom_user_for_sf?(participant)
+    participant.dig('user_email').present?
   end
 
 end

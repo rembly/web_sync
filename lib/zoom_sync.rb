@@ -48,8 +48,8 @@ class ZoomSync
     call(endpoint: "metrics/meetings/#{meeting_id}")
   end
 
-  def dashboard_participants_for_meeting(meeting_id:)
-    call(endpoint: "metrics/meetings/#{meeting_id}/participants")
+  def meeting_details(meeting_id:)
+    call(endpoint: "report/meetings/#{meeting_id}")
   end
 
   def daily_report(date: Date.today - 1.month)
@@ -72,10 +72,13 @@ class ZoomSync
     call(endpoint: "report/meetings/#{meeting_id}/participants")
   end
 
-  def valid_intro_call_meeting_participants
+  def intro_call_meeting_participants
     # this may need to deal with pages. Also we do not have an intro call ID yet
-    results = meeting_participants_report(meeting_id: INTRO_CALL_MEETING_ID)
-    results.dig('participants').select(&method(:valid_intro_call_duration)).select(&method(:valid_zoom_user_for_sf?))
+    meeting_participants_report(meeting_id: INTRO_CALL_MEETING_ID)
+  end
+
+  def intro_call_details
+    meeting_details(meeting_id: INTRO_CALL_MEETING_ID)
   end
 
   # this will send an invite to the passed in SF user's primary email to join zoom
@@ -92,13 +95,4 @@ class ZoomSync
         })
   end
 
-  private
-
-  def valid_intro_call_duration(participant)
-    participant.dig('duration').to_i >= MINIMUM_DURATION_FOR_INTRO_CALL
-  end
-
-  def valid_zoom_user_for_sf?(participant)
-    participant.dig('user_email').present?
-  end
 end
