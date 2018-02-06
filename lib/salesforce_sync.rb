@@ -5,8 +5,6 @@ require_relative 'web_sync/oauth_token'
 
 # Interact with Salesforce. Method included for setting intro call date
 #
-# Include in IRB: require File.join(File.dirname(__FILE__), 'lib', 'salesforce_sync')
-# Sample Query: SELECT Name, FirstName, LastName, Birthdate, Email, Intro_Call_Done__c, Intro_Call_RSVP_Date__c FROM Contact
 # Dates as: Date.today.rfc3339
 # TODO: Adjust for timezone of server
 class SalesforceSync
@@ -36,8 +34,8 @@ class SalesforceSync
       SELECT #{SELECT_FIELDS.join(', ')}
       FROM Contact
       WHERE Intro_Call_RSVP_Date__c != null AND Intro_Call_RSVP_Date__c >= #{(Date.today - 30.days).rfc3339}
-      AND (#{one_field_present_for(EMAIL_FIELDS)}) 
-      AND (#{all_fields_present_for(REQUIRED_FIELDS)})
+        AND (#{one_field_present_for(EMAIL_FIELDS)}) 
+        AND (#{all_fields_present_for(REQUIRED_FIELDS)})
     QUERY
 
     # we can't completely filter with SQL, double check RSVP date relative to intro call
@@ -109,7 +107,7 @@ class SalesforceSync
 
   def quoted_email_list(email_list)
     quoted_list = email_list.collect{|email| "'#{email}'"}.join(', ')
-    EMAIL_FIELDS.collect{|field_name| "#{field_name} IN (#{quoted_list})"}.join(' AND ')
+    EMAIL_FIELDS.collect{|field_name| "#{field_name} IN (#{quoted_list})"}.join(' OR ')
   end
 
   def one_field_present_for(fields)

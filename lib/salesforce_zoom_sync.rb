@@ -38,7 +38,6 @@ class SalesforceZoomSync
                     select(&method(:valid_zoom_user_for_sf?))
 
     # get all SF users matching those participants
-    # hash with zoom -> sf user
     matched_users = @sf.sf_users_for_zoom_users(participants)
 
     # set the intro call date based for those users. TODO: may need to output multiple users found for same email etc..
@@ -50,7 +49,7 @@ class SalesforceZoomSync
   private
 
   # cache all zoom users, use this rather than re-querying. Maybe only need email address.. for now get everything
-  # TODO: clear cache on update of zoom TODO: ensure query honors zoom API query limit
+  # TODO: clear cache on update of zoom
   def set_zoom_users
     @zoom_users = @zoom_client.all_users['users']
   end

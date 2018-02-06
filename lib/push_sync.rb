@@ -55,8 +55,7 @@ class PushSync
     user
   end
 
-  # Push notification goes to PHP script for any contact where Intro Call RSVP Date has been set or updated to today 
-  # (including new Contacts where that is set on creation)
+  # Push notification goes to script for any based on intro call date and intro call RSVP date
   def add_user_to_zoom?(sf_user)
     valid_user_for_zoom?(sf_user) && !sf_user_in_zoom?(sf_user)
   end
