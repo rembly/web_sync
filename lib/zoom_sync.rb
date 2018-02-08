@@ -8,18 +8,25 @@ require_relative './salesforce_sync'
 #
 # Time.now.iso8601 - for date/time format
 # Date.today.to_s - for date only format
+# To page, add params: {next_page_token: 'lM3bgpBx6zrHvDtdRjqEk3eJm754OOKD2x9'}
+#
 class ZoomSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync.log'))
   ZOOM_API_URL = 'https://api.zoom.us/v2/'
   MAX_CALLS_PER_SECOND = 1.2 # 1 second limit plus buffer
   HALT_CALL_QUEUE_SIGNAL = :stop
+  TOO_MANY_REQUESTS_ERROR = 429
+  MAX_PAGE_SIZE = 300
   BASIC_USER_TYPE = 1
   # TODO: update with actual intro call ID when available
   INTRO_CALL_MEETING_ID = '2017201719'
+  INTRO_WEBINAR_ID = '891518756' # sample webinar
+  INTRO_MEETING_ID = '526383982' # sample recurring meeting
   MINIMUM_DURATION_FOR_INTRO_CALL = 10 # minutes
 
   # queue for rate_limited api calls
   attr_reader :call_queue
+  attr_reader :last_response
 
   # fetches authentication token and starts thread for call queue
   def initialize
@@ -28,11 +35,16 @@ class ZoomSync
     start_request_queue_consumer
   end
 
+  # look for next_page_token to know whether to page. Max is 300.. may not hit this?
   def call(endpoint:, params: {})
     base_uri = URI.join(ZOOM_API_URL, endpoint).to_s
-    params = params.merge({ access_token: @zoom_web_token })
-    response = RestClient.get(base_uri, { params: params })
-    JSON.parse(response)
+    params = params.merge({ access_token: @zoom_web_token, page_size: MAX_PAGE_SIZE })
+    begin
+      response = RestClient.get(base_uri, { params: params })
+      return handle_response(response)
+    rescue RestClient::ExceptionWithResponse => e
+      return handle_response(e.response)
+    end
   end
 
   # schedule call for later, taking API limit into account. Passes results of call to callback
@@ -43,11 +55,16 @@ class ZoomSync
     }
   end
 
+  # create an account and send email
   def post(endpoint:, data:)
     base_uri = URI.join(ZOOM_API_URL, endpoint).to_s
-    # TODO: uncomment to enable zoom account creation. Account creation will send email to client
-    #RestClient.post(base_uri, data.to_json, {content_type: :json, accept: :json, Authorization: "Bearer #{@zoom_web_token}"})
-    LOG.info("Zoom client to be created: #{data}")
+    begin
+      # TODO: uncomment to enable zoom account creation. Account creation will send email to client
+      #RestClient.post(base_uri, data.to_json, {content_type: :json, accept: :json, Authorization: "Bearer #{@zoom_web_token}"})
+      LOG.info("Zoom client to be created: #{data}")
+    rescue RestClient::ExceptionWithResponse => e
+      return handle_response(e.response)
+    end
   end
 
   # schedule update for later, taking API limit into account. Passes results of update to optional callback
@@ -63,11 +80,30 @@ class ZoomSync
       user_path = ZOOM_API_URL + "users/#{user_id_or_email}"
       # TODO: uncomment to actually remove users. For now just log the request
       #results = RestClient.delete(user_path, {accept: :json, Authorization: "Bearer #{@zoom_web_token}"})
-      #LOG.info("Results: #{results}")
       LOG.info("Zoom user to delete: #{user_path}")
-      p "Calling delete user: #{user_path}"
     }
   end
+
+  # return json representation of results or error object if call failed. This will handle client pagination
+  def handle_response(response)
+    return if response.blank?
+    @last_response = response
+
+    if success_response?(response)
+      results = JSON.parse(response)
+      return gather_pages?(results) ? merge_participants(results, get_next_page(response, results)) : results
+    else
+      # TODO: potentially handle 429 rate error by delaying/resending
+      LOG.error("FAILED request #{response.request}: MESSAGE: #{JSON.parse(response)}")
+      return JSON.parse(response)
+    end
+  end
+
+  def stop_request_queue_consumer
+    @call_queue << HALT_CALL_QUEUE_SIGNAL
+  end
+
+  ## Pre-defined calls to resources ##
 
   def meeting_report_for(from: Date.today - 2.months, to: Date.today - 1.month)
     call(endpoint: 'metrics/meetings', params: { from: from.to_s, to: to.to_s })
@@ -102,12 +138,15 @@ class ZoomSync
   end
 
   def intro_call_meeting_participants
-    # this may need to deal with pages. Also we do not have an intro call ID yet
     meeting_participants_report(meeting_id: INTRO_CALL_MEETING_ID)
   end
 
   def intro_call_details
     meeting_details(meeting_id: INTRO_CALL_MEETING_ID)
+  end
+
+  def intro_call_webinar_participants
+    call(endpoint: "report/webinars/#{INTRO_WEBINAR_ID}/participants")
   end
 
   # this will send an invite to the passed in SF user's primary email to join zoom
@@ -125,10 +164,6 @@ class ZoomSync
     queue_post(endpoint: 'users/', data: data) { |results| LOG.debug("Post results: #{results}") }
   end
 
-  def stop_request_queue_consumer
-    @call_queue << HALT_CALL_QUEUE_SIGNAL
-  end
-
   private
 
   # take API calls from the call queue and execute with API limits. Consumer expects callable object
@@ -142,4 +177,29 @@ class ZoomSync
     end
   end
 
+  # all 200 responses indicate a success
+  def success_response?(response)
+    response.try(:code).to_s.starts_with?('2')
+  end
+
+  # gather pages if there is a next_page token and the result set contains participants
+  def gather_pages?(results)
+    results.dig('next_page_token').present? && results.dig('participants').present?
+  end
+
+  # get next page by re-sending same request but with next page token. This will block for max api call rate duration
+  def get_next_page(response, results)
+    request_uri = URI.parse(response.request.url)
+    endpoint = request_uri.path.gsub(/\/v2\//,'')
+    exclude_params = %w(page_size access_token next_page_token)
+    params = CGI.parse(request_uri.query).except(*exclude_params).inject({}){|map, (k, v)| map[k] = v.first; map}
+    sleep MAX_CALLS_PER_SECOND
+    call(endpoint: endpoint, params: params.merge({next_page_token: results.dig('next_page_token')}))
+  end
+
+  # merge the participant list of two result sets
+  # throw if one result set is an error?
+  def merge_participants(r1, r2)
+    r1.deep_merge(r2){|key, r1, r2| key == 'participants' ? r1 + r2 : r2}
+  end
 end
