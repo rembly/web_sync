@@ -8,7 +8,7 @@ require_relative './salesforce_sync'
 #
 # Time.now.iso8601 - for date/time format
 # Date.today.to_s - for date only format
-# To page, add params: {next_page_token: 'lM3bgpBx6zrHvDtdRjqEk3eJm754OOKD2x9'}
+# To page, add params: {next_page_token: '[page token]'}
 #
 class ZoomSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync.log'))
@@ -145,8 +145,12 @@ class ZoomSync
     meeting_details(meeting_id: INTRO_CALL_MEETING_ID)
   end
 
-  def intro_call_webinar_participants
-    call(endpoint: "report/webinars/#{INTRO_WEBINAR_ID}/participants")
+  def intro_call_webinar_details
+    call(endpoint: "report/webinars/#{INTRO_WEBINAR_ID}")
+  end
+
+  def intro_call_webinar_participants(meeting_id:)
+    call(endpoint: "report/webinars/#{meeting_id}/participants")
   end
 
   # this will send an invite to the passed in SF user's primary email to join zoom

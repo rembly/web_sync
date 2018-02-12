@@ -2,12 +2,14 @@ require 'restforce'
 require 'json'
 require 'active_support/all'
 require_relative 'web_sync/oauth_token'
+require 'pry'
 
 # Interact with Salesforce. Method included for setting intro call date
 #
 # Dates as: Date.today.rfc3339
 # TODO: Adjust for timezone of server
 class SalesforceSync
+  LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync.log'))
   API_VERSION = '38.0'
   SANDBOX_HOST = 'test.salesforce.com'
   attr_accessor :client
@@ -43,8 +45,8 @@ class SalesforceSync
   end
 
   def sf_users_for_zoom_users(zoom_users)
-    email_list = zoom_users.map{|zoom_user| zoom_user.dig('email')}.compact.join(', ')
-
+    email_list = zoom_users.map{|zoom_user| zoom_user.dig('user_email')}.compact
+    
     matched_contacts = @client.query(<<-QUERY)
       SELECT #{SELECT_FIELDS.join(', ')}
       FROM Contact
@@ -60,7 +62,7 @@ class SalesforceSync
   end
 
   def set_intro_date_for_contact(contact:, date:)
-    if contact.present? && (contact.Date_of_Intro_Call__c.blank? || contact.Intro_Call_RSVP_Date__c.to_date < date)
+    if contact.present? && (contact.Date_of_Intro_Call__c.blank? || contact.Date_of_Intro_Call__c.to_date < date)
       contact.Date_of_Intro_Call__c = date.rfc3339
       contact.save
     end

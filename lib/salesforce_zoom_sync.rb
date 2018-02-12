@@ -21,7 +21,7 @@ class SalesforceZoomSync
     sync_zoom_updates_to_sf
   end
 
-  def sync_sf_users_to_zoom
+  def sync_sf_updates_to_zoom
     # get SF users eligible to be added to zoom based on intro call date and rsvp
     eligible_sf_users = @sf.contacts_eligible_for_zoom
     # add eligibile sf users to zoom if necessary
@@ -30,23 +30,38 @@ class SalesforceZoomSync
 
   def sync_zoom_updates_to_sf
     # get all zoom users who have watched the most recent intro call for more than the minimum duration
+    sync_intro_call_users
+    sleep ZoomSync::MAX_CALLS_PER_SECOND
+    sync_intro_call_webinar_users
+  end
+
+  private
+
+  def sync_intro_call_webinar_users
+    intro_details = @zoom_client.intro_call_webinar_details
+    intro_call_date = intro_details['start_time'].to_date
+    intro_call_participants = @zoom_client.intro_call_webinar_participants(meeting_id: intro_details['uuid'])
+    add_meeting_participants(intro_call_participants, intro_call_date)
+  end
+
+  def sync_intro_call_users
     intro_details = @zoom_client.intro_call_details
     intro_call_date = intro_details['start_time'].to_date
-    intro_call = @zoom_client.meeting_participants_report(meeting_id: intro_details['uuid'])
-    participants = intro_call.dig('participants').
-                    select(&method(:valid_intro_call_duration)).
-                    select(&method(:valid_zoom_user_for_sf?))
+    intro_call_participants = @zoom_client.meeting_participants_report(meeting_id: intro_details['uuid'])
+    add_meeting_participants(intro_call_participants, intro_call_date)
+  end
 
+  def add_meeting_participants(meeting_participants, intro_call_date)
+    binding.pry
+    participants = meeting_participants.dig('participants').select(&method(:valid_intro_call_duration)).
+                    select(&method(:valid_zoom_user_for_sf?))
     # get all SF users matching those participants
     matched_users = @sf.sf_users_for_zoom_users(participants)
-
     # set the intro call date based for those users. TODO: may need to output multiple users found for same email etc..
     matched_users.each do |user|
       @sf.set_intro_date_for_contact(contact: user, date: intro_call_date)
     end
   end
-
-  private
 
   # cache all zoom users, use this rather than re-querying. Maybe only need email address.. for now get everything
   # TODO: clear cache on update of zoom
