@@ -22,13 +22,43 @@ sudo apt-get install rvm
 bash ./setup.sh
 ```
 
-And repeat
+## Example Interactive Console Usage
 
+Run nightly script
 ```
-until finished
+irb -r ./lib/salesforce_zoom_sync.rb
+# run nightly script
+SalesforceZoomSync.new
 ```
 
-End with an example of getting some data out of the system or using it for a little demo
+Start service to register for Salesforce push notifications and update Zoom
+```
+irb -r ./lib/push_sync.rb
+# start push updates (this will block)
+PushSync.new
+```
+Interactive Zoom examples
+```
+require 'awesome_print'
+zs = ZoomSync.new
+all_users = zs.all_users
+ap all_users
+# get meeting details
+meeting_details = zs.intro_call_details
+ap meeting_details
+# call a manual endpoint
+daily_report = call(endpoint: 'report/daily/', params: { year: date.year, month: date.month })
+ap daily_report
+```
+Interactive Salesforce examples
+```
+require 'awesome_print'
+sf = SalesforceSync.new
+all_users = sf.all_contacts
+ap all_users
+# manual query
+meeting_details = sf.client.query("SELECT Id, FirstName, LastName, Birthdate, Email, Intro_Call_RSVP_Date__c FROM Contact")
+```
 
 ## Deployment
 
