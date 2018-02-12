@@ -1,0 +1,10 @@
+# update with SMTP information
+to: 'to.email@email.com'
+from: 'from.email@email.com'
+via_options:
+  address: 'smtp.yourserver.com'
+  port: '25'
+  user_name: 'user'
+  password: 'password'
+  authentication: :plain # :plain, :login, :cram_md5, no auth by default
+  domain: 'domain.com'
