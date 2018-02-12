@@ -6,7 +6,7 @@ require 'pry'
 
 # Interact with Salesforce. Method included for setting intro call date
 #
-# Dates as: Date.today.rfc3339
+# Send dates to SF as: Date.today.rfc3339
 # TODO: Adjust for timezone of server
 class SalesforceSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync.log'))
@@ -36,7 +36,7 @@ class SalesforceSync
       SELECT #{SELECT_FIELDS.join(', ')}
       FROM Contact
       WHERE Intro_Call_RSVP_Date__c != null AND Intro_Call_RSVP_Date__c >= #{(Date.today - 30.days).rfc3339}
-        AND (#{one_field_present_for(EMAIL_FIELDS)}) 
+        AND (#{one_field_present_for(EMAIL_FIELDS)})
         AND (#{all_fields_present_for(REQUIRED_FIELDS)})
     QUERY
 
@@ -46,13 +46,13 @@ class SalesforceSync
 
   def sf_users_for_zoom_users(zoom_users)
     email_list = zoom_users.map{|zoom_user| zoom_user.dig('user_email')}.compact
-    
+
     matched_contacts = @client.query(<<-QUERY)
       SELECT #{SELECT_FIELDS.join(', ')}
       FROM Contact
       WHERE #{quoted_email_list(email_list)}
     QUERY
-    
+
     LOG.info("#{matched_contacts.size} found in SF for Zoom update")
     matched_contacts
   end

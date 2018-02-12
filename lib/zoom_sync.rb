@@ -174,7 +174,6 @@ class ZoomSync
   def start_request_queue_consumer
     Thread.new do
       while (call_request = @call_queue.pop) != HALT_CALL_QUEUE_SIGNAL
-        LOG.debug('Executing call request')
         call_request.call()
         sleep MAX_CALLS_PER_SECOND
       end

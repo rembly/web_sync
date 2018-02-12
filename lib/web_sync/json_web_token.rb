@@ -1,6 +1,7 @@
 require 'jwt'
 require 'active_support/all'
 
+# Generate token for interacting with Zoom API
 class JsonWebToken
   EXPIRATION_SECONDS = 86400 # 1 day
   ZOOM_API_KEY = ENV['ZOOM_API_KEY']

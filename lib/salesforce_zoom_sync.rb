@@ -5,7 +5,8 @@ require 'active_support/all'
 require 'pry'
 
 # This will check Salesforce for users who should be in zoom but are not.
-# Initially this will be run nightly
+# It will also update SF intro call date for users who attended the intro call
+# Initially this will be run as a nightly script
 class SalesforceZoomSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'nightly_sync.log'))
   EMAIL_NOTIFIER = EmailNotifier.new
@@ -78,7 +79,7 @@ class SalesforceZoomSync
     end
   end
 
-  # log messages and build email summary
+  # log messages to logfile and build email summary for summary report
   def log(message)
     LOG.info(message)
     summary << message

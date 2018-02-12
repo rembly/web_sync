@@ -2,6 +2,7 @@ require 'rest-client'
 require 'json'
 require 'active_support/all'
 
+# Generate token for interacting with Salesforce API
 class OauthToken
   SALESFORCE_PWD = ENV['SALESFORCE_PWD']
   SALESFORCE_SECRET = ENV['SALESFORCE_SECRET']
