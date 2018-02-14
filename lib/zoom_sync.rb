@@ -22,6 +22,7 @@ class ZoomSync
   INTRO_CALL_MEETING_ID = '2017201719'
   INTRO_WEBINAR_ID = '891518756' # sample webinar
   INTRO_MEETING_ID = '526383982' # sample recurring meeting
+  PRODUCTION_INTRO_MEETING_ID = '847350531' # sample recurring meeting
   MINIMUM_DURATION_FOR_INTRO_CALL = 10 # minutes
 
   # queue for rate_limited api calls
@@ -107,10 +108,6 @@ class ZoomSync
 
   def meeting_report_for(from: Date.today - 2.months, to: Date.today - 1.month)
     call(endpoint: 'metrics/meetings', params: { from: from.to_s, to: to.to_s })
-  end
-
-  def meeting_instance(meeting_id:)
-    call(endpoint: "metrics/meetings/#{meeting_id}")
   end
 
   def meeting_details(meeting_id:)

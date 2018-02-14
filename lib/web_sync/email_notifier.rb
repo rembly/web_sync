@@ -1,7 +1,7 @@
 require 'net/smtp'
 require 'yaml'
 require 'active_support/all'
-require 'pry'
+require 'pony'
 
 
 class EmailNotifier
@@ -17,6 +17,6 @@ class EmailNotifier
   def send_email(subject:, body:)
     LOG.info("To/From: #{@to}/#{@from}, Subject: #{subject}, Body: #{body}, Options: #{@options}")
     # TODO uncomment when ready to send
-    #Pony.email(body: body, subject: subject, via: :smtp, via_options: @options
+    # Pony.mail(body: body, subject: subject, to: @to, from: @from, via: :smtp, via_options: @options)
   end
 end
