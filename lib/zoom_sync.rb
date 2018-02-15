@@ -61,7 +61,7 @@ class ZoomSync
     base_uri = [URI.join(ZOOM_API_URL, endpoint).to_s, params.to_query].compact.join('?')
     begin
       # TODO: uncomment to enable zoom account creation. Account creation will send email to client
-      RestClient.post(base_uri, data.to_json, {content_type: :json, accept: :json, Authorization: "Bearer #{@zoom_web_token}"})
+      # RestClient.post(base_uri, data.to_json, {content_type: :json, accept: :json, Authorization: "Bearer #{@zoom_web_token}"})
       LOG.info("Zoom client to be created: #{data}")
     rescue RestClient::ExceptionWithResponse => e
       return handle_response(e.response)
