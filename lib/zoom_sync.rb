@@ -111,7 +111,7 @@ class ZoomSync
   end
 
   def meeting_details(meeting_id:)
-    call(endpoint: "report/meetings/#{meeting_id}")
+    call(endpoint: "meetings/#{meeting_id}")
   end
 
   def daily_report(date: Date.today - 1.month)
@@ -143,7 +143,7 @@ class ZoomSync
   end
 
   def intro_call_webinar_details
-    call(endpoint: "report/webinars/#{INTRO_WEBINAR_ID}")
+    call(endpoint: "webinars/#{INTRO_WEBINAR_ID}")
   end
 
   def intro_call_webinar_participants(meeting_id:)
