@@ -8,7 +8,6 @@ require_relative './salesforce_sync'
 #
 # Time.now.iso8601 - for date/time format
 # Date.today.to_s - for date only format
-# To page, add params: {next_page_token: '[page token]'}
 #
 class ZoomSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync.log'))
@@ -18,7 +17,6 @@ class ZoomSync
   TOO_MANY_REQUESTS_ERROR = 429
   MAX_PAGE_SIZE = 300
   BASIC_USER_TYPE = 1
-  # TODO: update with actual intro call ID when available
   INTRO_CALL_MEETING_ID = '2017201719'
   CLIMATE_ADVOCACY_WEBINAR_ID = '891518756' # sample webinar
   INTRO_MEETING_ID = '526383982' # sample recurring meeting
@@ -130,23 +128,14 @@ class ZoomSync
     call(endpoint: "report/webinars/#{id}/participants")
   end
 
-  # get upcoming occurrences
-  def climate_advocacy_details
-    call(endpoint: "webinars/#{CLIMATE_ADVOCACY_WEBINAR_ID}")
-  end
-
   # this defaults to 'approved' registrants only. But all invited are auto-approved at this point
-  def climate_advocacy_registrants
-    call(endpoint: "webinars/#{CLIMATE_ADVOCACY_WEBINAR_ID}/registrants")
-  end
+  def intro_call_registrants; call(endpoint: "webinars/#{INTRO_WEBINAR_ID}/registrants") end
+  def intro_call_participants; webinar_participants_report(id: INTRO_WEBINAR_ID) end
+  def intro_call_details; call(endpoint: "webinars/#{INTRO_WEBINAR_ID}") end
 
-  def intro_call_webinar_details
-    call(endpoint: "webinars/#{INTRO_WEBINAR_ID}")
-  end
-
-  def climate_advocacy_participants
-    webinar_participants_report(id: CLIMATE_ADVOCACY_WEBINAR_ID)
-  end
+  def climate_advocacy_details; call(endpoint: "webinars/#{CLIMATE_ADVOCACY_WEBINAR_ID}") end
+  def climate_advocacy_registrants; call(endpoint: "webinars/#{CLIMATE_ADVOCACY_WEBINAR_ID}/registrants") end
+  def climate_advocacy_participants; webinar_participants_report(id: CLIMATE_ADVOCACY_WEBINAR_ID) end
 
   # this will send an invite to the passed in SF user's primary email to join zoom
   def add_sf_user(sf_user)
@@ -164,15 +153,16 @@ class ZoomSync
   end
 
   # note that this triggers welcome meeting and adds them in 'approved' status
-  def add_intro_meeting_registrant(sf_user, meeting_occurrence)
+  def add_intro_meeting_registrant(sf_user, meeting_occurrence = nil)
     LOG.info("SF user not found in zoom. Adding to Zoom")
+    params = meeting_occurrence.present? ? {occurrence_ids: meeting_occurrence} : {}
     data = {
         email: SalesforceSync.primary_email(sf_user),
         first_name: sf_user.FirstName,
         last_name: sf_user.LastName,
     }
 
-    queue_post(endpoint: "webinars/#{INTRO_WEBINAR_ID}/registrants", data: data, params: {occurrence_ids: meeting_occurrence}) { |results| LOG.debug("Add registrant results: #{results}") }
+    queue_post(endpoint: "webinars/#{INTRO_WEBINAR_ID}/registrants", data: data, params: params) { |results| LOG.debug("Add registrant results: #{results}") }
   end
 
   private

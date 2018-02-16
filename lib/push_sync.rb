@@ -12,16 +12,17 @@ class PushSync
 
   attr_accessor :sf
   attr_accessor :zoom_client
-  attr_accessor :zoom_users
+  attr_accessor :zoom_registrants
 
   def initialize
     @sf = SalesforceSync.new
     @zoom_client = ZoomSync.new
-    set_zoom_users
+    # get all registrants for upcoming intro call
+    get_zoom_registrants
     start_sync_job
   end
 
-  # Register for SF client updates via push topic. Add/update/remove users in Zoom as needed TODO: separate thread
+  # Register for SF client updates via push topic. Add/update/remove users in Zoom as needed
   def start_sync_job
     EM.run do
       @sf.client.subscribe PUBSUB_TOPIC do |push_message|
@@ -45,7 +46,6 @@ class PushSync
   end
 
   def delete_event?(message)
-    # verify delete type
     %w(deleted).include?(message.dig('event', 'type'))
   end
 
@@ -55,15 +55,15 @@ class PushSync
     user
   end
 
-  # Push notification goes to script for any based on intro call date and intro call RSVP date
   def add_user_to_zoom?(sf_user)
-    valid_user_for_zoom?(sf_user) && !sf_user_in_zoom?(sf_user)
+    # re-adding an already-registered user does not add duplicates or send another email
+    valid_user_for_zoom?(sf_user) # && !sf_user_in_zoom?(sf_user)
   end
 
   # cache all zoom users, use this rather than re-querying. Maybe only need email address.. for now get everything
   # TODO: clear cache on update of zoom TODO: ensure query honors zoom API query limit
-  def set_zoom_users
-    @zoom_users = @zoom_client.all_users['users']
+  def get_zoom_registrants
+    @zoom_registrants = @zoom_client.intro_call_registrants
   end
 
   # SF user has all necessary fields and should be added based on intro call fields

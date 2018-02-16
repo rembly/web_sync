@@ -13,13 +13,13 @@ class SalesforceZoomSync
 
   attr_accessor :sf
   attr_accessor :zoom_client
-  attr_accessor :zoom_users
+  attr_accessor :zoom_registrants
   attr_accessor :summary
 
   def initialize
     @sf = SalesforceSync.new
     @zoom_client = ZoomSync.new
-    set_zoom_users
+    set_zoom_registrants
     @summary = ["Nightly Salesforce / Zoom Sync for #{Date.today}"]
     LOG.info('Starting nightly sync')
     sync_sf_updates_to_zoom
@@ -34,15 +34,13 @@ class SalesforceZoomSync
     eligible_sf_users = @sf.contacts_eligible_for_zoom
     # add eligibile sf users to zoom if necessary
     eligible_sf_users.select(&method(:sf_user_not_in_zoom?)).
-                      tap{|users_to_add| log("Adding #{users_to_add.size} SF users to zoom")}.
-                      each{|user_to_add| @zoom_client.add_sf_user(user_to_add)}
+                      tap(&method(:log_zoom_add)).
+                      each{|user_to_add| @zoom_client.add_intro_meeting_registrant(user_to_add)}
   end
 
   def sync_zoom_updates_to_sf
     LOG.info('Syncing Zoom updates to SF')
     # get all zoom users who have watched the most recent intro call for more than the minimum duration
-    sync_intro_call_users
-    sleep ZoomSync::MAX_CALLS_PER_SECOND
     sync_intro_call_webinar_users
   end
 
@@ -53,26 +51,18 @@ class SalesforceZoomSync
   end
 
   def sync_intro_call_webinar_users
-    intro_details = @zoom_client.intro_call_webinar_details
-    intro_call_date = intro_details['start_time'].to_date
-    intro_call_participants = @zoom_client.intro_call_webinar_participants(meeting_id: intro_details['uuid'])
-    log("Syncing Intro Webinar from #{intro_call_date}")
-    add_meeting_participants(intro_call_participants, intro_call_date)
+    # intro_details = @zoom_client.intro_call_webinar_details
+    # intro_call_date = intro_details['start_time'].to_date
+    # intro_call_participants = @zoom_client.intro_call_webinar_participants(meeting_id: intro_details['uuid'])
+    add_meeting_participants(@zoom_client.intro_call_participants)
   end
 
-  def sync_intro_call_users
-    intro_details = @zoom_client.intro_call_details
-    intro_call_date = intro_details['start_time'].to_date
-    intro_call_participants = @zoom_client.meeting_participants_report(meeting_id: intro_details['uuid'])
-    log("Syncing Intro Call from #{intro_call_date}")
-    add_meeting_participants(intro_call_participants, intro_call_date)
-  end
-
-  def add_meeting_participants(meeting_participants, intro_call_date)
+  def add_meeting_participants(meeting_participants)
     participants = meeting_participants.dig('participants').select(&method(:valid_intro_call_duration)).
                     select(&method(:valid_zoom_user_for_sf?))
+    intro_call_date = participants.dig('participants').try(:first).dig('join_time').try(:to_date)
     matched_users = @sf.sf_users_for_zoom_users(participants)
-    log("#{participants.size} valid Zoom participants to sync. #{matched_users.size} matched in SF")
+    log_sf_update(matched_users, intro_call_date)
     # set the intro call date based for those users. TODO: may need to output multiple users found for same email etc..
     matched_users.each do |user|
       @sf.set_intro_date_for_contact(contact: user, date: intro_call_date)
@@ -85,10 +75,20 @@ class SalesforceZoomSync
     summary << message
   end
 
-  # cache all zoom users, use this rather than re-querying. Maybe only need email address.. for now get everything
-  # TODO: clear cache on update of zoom
+  def log_zoom_add(users_to_add_to_zoom)
+    log("Registering #{users_to_add.size} users for Intro Call:")
+    users_to_add_to_zoom.each{|user| log("#{user.LastName}, #{user.FirstName} #{SalesforceSync.primary_email(user)}")}
+  end
+
+  def log_sf_update(sf_users, intro_date)
+    log("Updating #{sf_users.size} Salesforce records with Intro Call Date for #{intro_date}:")
+    sf_users.each{|user| log("#{user.LastName}, #{user.FirstName} #{SalesforceSync.primary_email(user)}")}
+  end
+
+  # cache all users registered for intro call
   def set_zoom_users
-    @zoom_users = @zoom_client.all_users['users']
+    @zoom_registrants = @zoom_client.intro_call_registrants['registrants']
+    LOG.error('MAX registrants for intro call') if @zoom_registrants.size == ZoomSync::MAX_PAGE_SIZE
   end
 
   def sf_user_not_in_zoom?(sf_user)
@@ -101,7 +101,9 @@ class SalesforceZoomSync
   end
 
   def zoom_user_from_sf_user(sf_user)
-    @zoom_users.find{|zoom_user| sf_user.try(:Email).to_s.casecmp(zoom_user['email']).zero?}
+    all_sf_emails = SalesforceSync.all_emails_for_user(sf_user)
+    # is there a zoom user whose email address matches any of the addresses for this SF user
+    @zoom_registrants.find{|zoom_user| all_sf_emails.any?{|sf_email| zoom_user['email'].to_s.casecmp(sf_email).zero?}}
   end
 
   def valid_intro_call_duration(participant)
