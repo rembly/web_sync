@@ -30,7 +30,7 @@ class PushSync
         sf_user = SalesforceSync.sf_message_user(push_message)
 
         if add_update_event?(push_message) && add_user_to_zoom?(sf_user)
-          @zoom_client.add_sf_user(sf_user)
+          @zoom_client.add_intro_meeting_registrant(sf_user)
         elsif delete_event?(push_message) && sf_user_in_zoom?(sf_user)
           @zoom_client.remove_user!(zoom_user_from_sf_user(sf_user)['id'])
         end
