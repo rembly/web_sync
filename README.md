@@ -22,6 +22,24 @@ sudo apt-get install rvm
 bash ./setup.sh
 ```
 
+## Running Sync Jobs
+
+Start the long-running process to listen for Salesforce updates and sync to Zoom
+```
+ruby ./start_salesforce_sync_job.rb
+```
+
+Run the nightly sync job
+```
+ruby ./run_nightly_sync_job.rb
+```
+
+## Logging and Notification
+
+* Email is currently disabled from sending but will be logged to /log/email.log.
+* Nightly sync logging is at /log/nightly_sync.log.
+* General information about the sync process is logged to /log/sync.log.
+
 ## Example Interactive Console Usage
 
 Run nightly script
