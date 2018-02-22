@@ -60,6 +60,7 @@ class SalesforceZoomSync
   def add_meeting_participants(meeting_participants)
     participants = meeting_participants.dig('participants').select(&method(:valid_intro_call_duration)).
                     select(&method(:valid_zoom_user_for_sf?))
+    binding.pry
     intro_call_date = participants.dig('participants').try(:first).dig('join_time').try(:to_date)
     matched_users = @sf.sf_users_for_zoom_users(participants)
     log_sf_update(matched_users, intro_call_date)
@@ -76,7 +77,7 @@ class SalesforceZoomSync
   end
 
   def log_zoom_add(users_to_add_to_zoom)
-    log("Registering #{users_to_add.size} users for Intro Call:")
+    log("Registering #{users_to_add_to_zoom.size} users for Intro Call:")
     users_to_add_to_zoom.each{|user| log("#{user.LastName}, #{user.FirstName} #{SalesforceSync.primary_email(user)}")}
   end
 
@@ -86,7 +87,7 @@ class SalesforceZoomSync
   end
 
   # cache all users registered for intro call
-  def set_zoom_users
+  def set_zoom_registrants
     @zoom_registrants = @zoom_client.intro_call_registrants['registrants']
     LOG.error('MAX registrants for intro call') if @zoom_registrants.size == ZoomSync::MAX_PAGE_SIZE
   end
