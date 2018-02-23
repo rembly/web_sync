@@ -2,6 +2,7 @@ require_relative 'salesforce_sync'
 require_relative 'zoom_sync'
 require_relative './web_sync/email_notifier'
 require 'active_support/all'
+require 'awesome_print'
 require 'pry'
 
 # This will check Salesforce for users who should be in zoom but are not.
@@ -33,6 +34,7 @@ class SalesforceZoomSync
     # get SF users eligible to be added to zoom based on intro call date and rsvp
     eligible_sf_users = @sf.contacts_eligible_for_zoom
     # add eligibile sf users to zoom if necessary
+    LOG.debug("#{eligible_sf_users.try(:size)} SF users eligible for zoom: #{eligible_sf_users.try(:ai)}")
     eligible_sf_users.select(&method(:sf_user_not_in_zoom?)).
                       tap(&method(:log_zoom_add)).
                       each{|user_to_add| @zoom_client.add_intro_meeting_registrant(user_to_add)}
@@ -51,17 +53,16 @@ class SalesforceZoomSync
   end
 
   def sync_intro_call_webinar_users
-    # intro_details = @zoom_client.intro_call_webinar_details
-    # intro_call_date = intro_details['start_time'].to_date
-    # intro_call_participants = @zoom_client.intro_call_webinar_participants(meeting_id: intro_details['uuid'])
-    add_meeting_participants(@zoom_client.intro_call_participants)
+    intro_participants = @zoom_client.intro_call_participants
+    LOG.debug("#{intro_participants.try(:size)} Intro Call users: #{intro_participants.ai}")
+    add_meeting_participants(intro_participants)
   end
 
   def add_meeting_participants(meeting_participants)
     participants = meeting_participants.dig('participants').select(&method(:valid_intro_call_duration)).
                     select(&method(:valid_zoom_user_for_sf?))
-    binding.pry
-    intro_call_date = participants.dig('participants').try(:first).dig('join_time').try(:to_date)
+    LOG.debug('No intro call participants to sync') && return unless participants.any?
+    intro_call_date = participants.try(:first).dig('join_time').try(:to_date)
     matched_users = @sf.sf_users_for_zoom_users(participants)
     log_sf_update(matched_users, intro_call_date)
     # set the intro call date based for those users. TODO: may need to output multiple users found for same email etc..
