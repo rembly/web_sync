@@ -44,17 +44,31 @@ class SalesforceSync
     contacts.select(&method(:valid_intro_call_date?))
   end
 
-  def sf_users_for_zoom_users(zoom_users)
+  def sf_users_for_zoom_emails(zoom_users)
     email_list = zoom_users.map{|zoom_user| zoom_user.dig('user_email')}.compact
 
-    matched_contacts = @client.query(<<-QUERY)
+    matched_contacts = @client.query(<<-QUERY) if email_list.any?
       SELECT #{SELECT_FIELDS.join(', ')}
       FROM Contact
       WHERE #{quoted_email_list(email_list)}
     QUERY
 
-    LOG.info("#{matched_contacts.size} found in SF for Zoom update")
+    LOG.info("#{matched_contacts.size} Zoom participants found in SF by email")
     matched_contacts
+  end
+
+  # Look up SF users by phone number. TODO: This is only handling US numbers right now
+  def sf_users_for_zoom_callers(zoom_callers)
+    phone_list = zoom_callers.select{|zu| SalesforceSync.phone_participant?(zu)}.map{|zu| zu.dig('name')}.compact
+
+    matched_by_phone = @client.query(<<-QUERY) if phone_list.any?
+      SELECT #{SELECT_FIELDS.join(', ')}
+      FROM Contact
+      WHERE #{quoted_phone_list(phone_list)}
+    QUERY
+
+    LOG.info("#{matched_by_phone.size} Zoom callers found in SF")
+    matched_by_phone
   end
 
   def set_intro_call_date(contact_id:, date:)
@@ -105,11 +119,20 @@ class SalesforceSync
     JSON.parse(push_message['sobject'].to_json, object_class: OpenStruct)
   end
 
+  def self.phone_participant?(participant = {})
+    participant.dig('name').to_s =~ /^\d+$/
+  end
+
   private
 
   def quoted_email_list(email_list)
     quoted_list = email_list.collect{|email| "'#{email}'"}.join(', ')
     EMAIL_FIELDS.collect{|field_name| "#{field_name} IN (#{quoted_list})"}.join(' OR ')
+  end
+
+  def quoted_phone_list(phone_list)
+    quoted_list = phone_list.collect{|number| "'#{formatted_phone_number(number)}'"}.join(', ')
+    PHONE_FIELDS.collect{|field_name| "#{field_name} IN (#{quoted_list})"}.join(' OR ')
   end
 
   def one_field_present_for(fields)
@@ -118,6 +141,11 @@ class SalesforceSync
 
   def all_fields_present_for(fields)
     fields.collect{|field_name| "#{field_name} != null"}.join(' AND ')
+  end
+
+  # TODO: this is only handling US numbers at this point
+  def formatted_phone_number(number)
+    ActiveSupport::NumberHelper.number_to_phone(number.to_s.gsub(/^1/, '').to_i, area_code: true)
   end
 
   def initialize_client(token)

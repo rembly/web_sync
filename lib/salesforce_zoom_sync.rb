@@ -63,12 +63,20 @@ class SalesforceZoomSync
                     select(&method(:valid_zoom_user_for_sf?))
     LOG.debug('No intro call participants to sync') && return unless participants.any?
     intro_call_date = participants.try(:first).dig('join_time').try(:to_date)
-    matched_users = @sf.sf_users_for_zoom_users(participants)
-    log_sf_update(matched_users, intro_call_date)
-    # set the intro call date based for those users. TODO: may need to output multiple users found for same email etc..
-    matched_users.each do |user|
-      @sf.set_intro_date_for_contact(contact: user, date: intro_call_date)
-    end
+    update_zoom_attendees(participants, intro_call_date)
+    update_zoom_callers(participants, intro_call_date)
+  end
+
+  def update_zoom_attendees(participants, intro_call_date)
+    matched_email = @sf.sf_users_for_zoom_emails(participants)
+    log_sf_update(matched_email, 'attendees', intro_call_date)
+    matched_email.each{|user| @sf.set_intro_date_for_contact(contact: user, date: intro_call_date) }
+  end
+
+  def update_zoom_callers(participants, intro_call_date)
+    matched_phone = @sf.sf_users_for_zoom_callers(participants)
+    log_sf_update(matched_phone, 'callers', intro_call_date)
+    matched_phone.each{|user| @sf.set_intro_date_for_contact(contact: user, date: intro_call_date) }
   end
 
   # log messages to logfile and build email summary for summary report
@@ -82,8 +90,8 @@ class SalesforceZoomSync
     users_to_add_to_zoom.each{|user| log("#{user.LastName}, #{user.FirstName} #{SalesforceSync.primary_email(user)}")}
   end
 
-  def log_sf_update(sf_users, intro_date)
-    log("Updating #{sf_users.size} Salesforce records with Intro Call Date for #{intro_date}:")
+  def log_sf_update(sf_users, type, intro_date)
+    log("Updating #{sf_users.size} Salesforce records with Intro Call #{type} for #{intro_date}:")
     sf_users.each{|user| log("#{user.LastName}, #{user.FirstName} #{SalesforceSync.primary_email(user)}")}
   end
 
@@ -113,7 +121,11 @@ class SalesforceZoomSync
   end
 
   def valid_zoom_user_for_sf?(participant)
-    participant.dig('user_email').present?
+    participant.dig('user_email').present? || ZoomSync.phone_participant?(participant)
+  end
+
+  def is_phone?(str)
+    str.to_s =~ /^\d+$/
   end
 
 end
