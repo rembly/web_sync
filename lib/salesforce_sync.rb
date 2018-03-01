@@ -57,14 +57,14 @@ class SalesforceSync
     matched_contacts
   end
 
-  # Look up SF users by phone number. TODO: This is only handling US numbers right now
+  # Look up SF users by phone number
   def sf_users_for_zoom_callers(zoom_callers)
     phone_list = zoom_callers.select{|zu| SalesforceSync.phone_participant?(zu)}.map{|zu| zu.dig('name')}.compact
 
-    matched_by_phone = @client.query(<<-QUERY) if phone_list.any?
-      SELECT #{SELECT_FIELDS.join(', ')}
-      FROM Contact
-      WHERE #{quoted_phone_list(phone_list)}
+    matched_by_phone = @client.search(<<-QUERY) if phone_list.any?
+      FIND {#{phone_list.join(' OR ')}}
+      IN PHONE FIELDS
+      RETURNING Contact(#{SELECT_FIELDS.join(', ')})
     QUERY
 
     LOG.info("#{matched_by_phone.size} Zoom callers found in SF")
@@ -130,6 +130,7 @@ class SalesforceSync
     EMAIL_FIELDS.collect{|field_name| "#{field_name} IN (#{quoted_list})"}.join(' OR ')
   end
 
+  # returning US-formatted numbers
   def quoted_phone_list(phone_list)
     quoted_list = phone_list.collect{|number| "'#{formatted_phone_number(number)}'"}.join(', ')
     PHONE_FIELDS.collect{|field_name| "#{field_name} IN (#{quoted_list})"}.join(' OR ')
@@ -143,7 +144,7 @@ class SalesforceSync
     fields.collect{|field_name| "#{field_name} != null"}.join(' AND ')
   end
 
-  # TODO: this is only handling US numbers at this point
+  # Create formatted phone number from Zoom number. TODO: this is only handling US numbers at this point
   def formatted_phone_number(number)
     ActiveSupport::NumberHelper.number_to_phone(number.to_s.gsub(/^1/, '').to_i, area_code: true)
   end
