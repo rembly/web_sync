@@ -72,13 +72,13 @@ class SalesforceSync
   end
 
   def set_intro_call_date(contact_id:, date:)
-    @client.update('Contact', Id: contact_id, Intro_Call_RSVP_Date__c: date.rfc3339)
+    #@client.update('Contact', Id: contact_id, Intro_Call_RSVP_Date__c: date.rfc3339)
   end
 
   def set_intro_date_for_contact(contact:, date:)
     if contact.present? && (contact.Date_of_Intro_Call__c.blank? || contact.Date_of_Intro_Call__c.to_date < date)
       contact.Date_of_Intro_Call__c = date.rfc3339
-      contact.save
+      #contact.save
     end
   end
 
