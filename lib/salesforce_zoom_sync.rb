@@ -34,7 +34,7 @@ class SalesforceZoomSync
     # get SF users eligible to be added to zoom based on intro call date and rsvp
     eligible_sf_users = @sf.contacts_eligible_for_zoom
     # add eligibile sf users to zoom if necessary
-    LOG.debug("#{eligible_sf_users.try(:size)} SF users eligible for zoom: #{eligible_sf_users.try(:ai)}")
+    LOG.debug("#{eligible_sf_users.try(:size).to_i} SF users eligible for zoom: #{eligible_sf_users.try(:ai)}")
     eligible_sf_users.select(&method(:sf_user_not_in_zoom?)).
                       tap(&method(:log_zoom_add)).
                       each{|user_to_add| @zoom_client.add_intro_meeting_registrant(user_to_add)}
@@ -54,7 +54,7 @@ class SalesforceZoomSync
 
   def sync_intro_call_webinar_users
     intro_participants = @zoom_client.intro_call_participants
-    LOG.debug("#{intro_participants.try(:size)} Intro Call users: #{intro_participants.ai}")
+    LOG.debug("#{intro_participants.try(:size).to_i} Intro Call users: #{intro_participants.ai}")
     add_meeting_participants(intro_participants)
   end
 
@@ -86,19 +86,19 @@ class SalesforceZoomSync
   end
 
   def log_zoom_add(users_to_add_to_zoom)
-    log("Registering #{users_to_add_to_zoom.size} users for Intro Call:")
+    log("Registering #{users_to_add_to_zoom.try(:size.to_i)} users for Intro Call:")
     users_to_add_to_zoom.each{|user| log("#{user.LastName}, #{user.FirstName} #{SalesforceSync.primary_email(user)}")}
   end
 
   def log_sf_update(sf_users, type, intro_date)
-    log("Updating #{sf_users.size} Salesforce records with Intro Call #{type} for #{intro_date}:")
+    log("Updating #{sf_users.try(:size).to_i} Salesforce records with Intro Call #{type} for #{intro_date}:")
     sf_users.each{|user| log("#{user.LastName}, #{user.FirstName} #{SalesforceSync.primary_email(user)}")}
   end
 
   # cache all users registered for intro call
   def set_zoom_registrants
     @zoom_registrants = @zoom_client.intro_call_registrants['registrants']
-    LOG.error('MAX registrants for intro call') if @zoom_registrants.size == ZoomSync::MAX_PAGE_SIZE
+    LOG.error('MAX registrants for intro call') if @zoom_registrants.try(:size).to_i == ZoomSync::MAX_PAGE_SIZE
   end
 
   def sf_user_not_in_zoom?(sf_user)
