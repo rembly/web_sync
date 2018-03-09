@@ -86,7 +86,7 @@ class SalesforceZoomSync
   end
 
   def log_zoom_add(users_to_add_to_zoom)
-    log("Registering #{users_to_add_to_zoom.try(:size.to_i)} users for Intro Call:")
+    log("Registering #{users_to_add_to_zoom.try(:size).to_i} users for Intro Call:")
     users_to_add_to_zoom.each{|user| log("#{user.LastName}, #{user.FirstName} #{SalesforceSync.primary_email(user)}")}
   end
 
