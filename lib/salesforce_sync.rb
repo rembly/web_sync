@@ -67,7 +67,7 @@ class SalesforceSync
       RETURNING Contact(#{SELECT_FIELDS.join(', ')})
     QUERY
 
-    LOG.info("#{matched_by_phone.size} Zoom callers found in SF")
+    LOG.info("#{matched_by_phone.try(:size).to_i} Zoom callers found in SF")
     matched_by_phone
   end
 

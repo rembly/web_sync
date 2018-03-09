@@ -70,13 +70,13 @@ class SalesforceZoomSync
   def update_zoom_attendees(participants, intro_call_date)
     matched_email = @sf.sf_users_for_zoom_emails(participants)
     log_sf_update(matched_email, 'attendees', intro_call_date)
-    matched_email.each{|user| @sf.set_intro_date_for_contact(contact: user, date: intro_call_date) }
+    matched_email.each{|user| @sf.set_intro_date_for_contact(contact: user, date: intro_call_date) } if matched_email.try(:any?)
   end
 
   def update_zoom_callers(participants, intro_call_date)
     matched_phone = @sf.sf_users_for_zoom_callers(participants)
     log_sf_update(matched_phone, 'callers', intro_call_date)
-    matched_phone.each{|user| @sf.set_intro_date_for_contact(contact: user, date: intro_call_date) }
+    matched_phone.each{|user| @sf.set_intro_date_for_contact(contact: user, date: intro_call_date) } if matched_phone.try(:any?)
   end
 
   # log messages to logfile and build email summary for summary report
@@ -87,12 +87,12 @@ class SalesforceZoomSync
 
   def log_zoom_add(users_to_add_to_zoom)
     log("Registering #{users_to_add_to_zoom.try(:size).to_i} users for Intro Call:")
-    users_to_add_to_zoom.each{|user| log("#{user.LastName}, #{user.FirstName} #{SalesforceSync.primary_email(user)}")}
+    users_to_add_to_zoom.each{|user| log("#{user.LastName}, #{user.FirstName} #{SalesforceSync.primary_email(user)}")} if users_to_add_to_zoom.try(:any?)
   end
 
   def log_sf_update(sf_users, type, intro_date)
     log("Updating #{sf_users.try(:size).to_i} Salesforce records with Intro Call #{type} for #{intro_date}:")
-    sf_users.each{|user| log("#{user.LastName}, #{user.FirstName} #{SalesforceSync.primary_email(user)}")}
+    sf_users.each{|user| log("#{user.LastName}, #{user.FirstName} #{SalesforceSync.primary_email(user)}")} if sf_users.try(:any?)
   end
 
   # cache all users registered for intro call
