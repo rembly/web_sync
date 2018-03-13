@@ -24,8 +24,8 @@ class SalesforceZoomSync
     @summary = ["Nightly Salesforce / Zoom Sync for #{Date.today}"]
     LOG.info("Salesforce user: #{ENV['SALESFORCE_USER']}");
     LOG.info('Starting nightly sync')
-    sync_sf_updates_to_zoom
     sync_zoom_updates_to_sf
+    sync_sf_updates_to_zoom
     LOG.info('Finished nightly sync')
     send_summary_email
     @zoom_client.stop_request_queue_consumer
