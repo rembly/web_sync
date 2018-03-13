@@ -22,11 +22,14 @@ class SalesforceZoomSync
     @zoom_client = ZoomSync.new
     set_zoom_registrants
     @summary = ["Nightly Salesforce / Zoom Sync for #{Date.today}"]
+    LOG.info("Salesforce user: #{ENV['SALESFORCE_USER']}");
     LOG.info('Starting nightly sync')
     sync_sf_updates_to_zoom
     sync_zoom_updates_to_sf
     LOG.info('Finished nightly sync')
     send_summary_email
+    @zoom_client.stop_request_queue_consumer
+    @zoom_client.queue_consumer.join
   end
 
   def sync_sf_updates_to_zoom
@@ -34,7 +37,7 @@ class SalesforceZoomSync
     # get SF users eligible to be added to zoom based on intro call date and rsvp
     eligible_sf_users = @sf.contacts_eligible_for_zoom
     # add eligibile sf users to zoom if necessary
-    LOG.debug("#{eligible_sf_users.try(:size).to_i} SF users eligible for zoom: #{eligible_sf_users.try(:ai)}")
+    # LOG.debug("#{eligible_sf_users.try(:size).to_i} SF users eligible for zoom: #{eligible_sf_users.try(:attrs)}")
     eligible_sf_users.select(&method(:sf_user_not_in_zoom?)).
                       tap(&method(:log_zoom_add)).
                       each{|user_to_add| @zoom_client.add_intro_meeting_registrant(user_to_add)}
@@ -54,7 +57,7 @@ class SalesforceZoomSync
 
   def sync_intro_call_webinar_users
     intro_participants = @zoom_client.intro_call_participants
-    LOG.debug("#{intro_participants.try(:size).to_i} Intro Call users: #{intro_participants.ai}")
+    LOG.debug("#{intro_participants.try(:size).to_i} Intro Call users:")
     add_meeting_participants(intro_participants)
   end
 
@@ -87,7 +90,7 @@ class SalesforceZoomSync
 
   def log_zoom_add(users_to_add_to_zoom)
     log("Registering #{users_to_add_to_zoom.try(:size).to_i} users for Intro Call:")
-    users_to_add_to_zoom.each{|user| log("#{user.LastName}, #{user.FirstName} #{SalesforceSync.primary_email(user)}")} if users_to_add_to_zoom.try(:any?)
+    users_to_add_to_zoom.each{|user| log("#{user.try(:attrs).try(:as_json)}")} if users_to_add_to_zoom.try(:any?)
   end
 
   def log_sf_update(sf_users, type, intro_date)

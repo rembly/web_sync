@@ -26,12 +26,13 @@ class ZoomSync
   # queue for rate_limited api calls
   attr_reader :call_queue
   attr_reader :last_response
+  attr_accessor :queue_consumer
 
   # fetches authentication token and starts thread for call queue
   def initialize
     @zoom_web_token = JsonWebToken.zoom_token
     @call_queue = Queue.new
-    start_request_queue_consumer
+    @queue_consumer = start_request_queue_consumer
   end
 
   # look for next_page_token to know whether to page. Max is 300.. may not hit this?
@@ -175,6 +176,8 @@ class ZoomSync
         call_request.call()
         sleep MAX_CALLS_PER_SECOND
       end
+
+      LOG.info('Zoom sync queue halt signal received, ending thread')
     end
   end
 
