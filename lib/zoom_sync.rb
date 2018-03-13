@@ -163,7 +163,7 @@ class ZoomSync
         last_name: sf_user.LastName,
     }
 
-    queue_post(endpoint: "webinars/#{INTRO_WEBINAR_ID}/registrants", data: data, params: params) { |results| LOG.debug("Add registrant results: #{results}") }
+    queue_post(endpoint: "webinars/#{INTRO_WEBINAR_ID}/registrants", data: data, params: params)
   end
 
   private
