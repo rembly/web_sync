@@ -11,8 +11,7 @@ require 'pry'
 class SalesforceSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync.log'))
   API_VERSION = '38.0'
-  SANDBOX_HOST = 'test.salesforce.com'
-  PRODUCTION_HOST = 'salesforce.com'
+  SALESFORCE_HOST = ENV['SALESFORCE_HOST']
   attr_accessor :client
   attr_accessor :token
 
@@ -152,8 +151,7 @@ class SalesforceSync
 
   def initialize_client(token)
     # todo: sandbox host is for dev only
-    Restforce.new(oauth_token: token['access_token'], instance_url: token['instance_url'], api_version: API_VERSION, host: SANDBOX_HOST)
-    # Restforce.new(oauth_token: token['access_token'], instance_url: token['instance_url'], api_version: API_VERSION, host: PRODUCTION_HOST)
+    Restforce.new(oauth_token: token['access_token'], instance_url: token['instance_url'], api_version: API_VERSION, host: SALESFORCE_HOST)
   end
 
 end

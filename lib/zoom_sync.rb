@@ -139,10 +139,11 @@ class ZoomSync
 
   # this will send an invite to the passed in SF user's primary email to join zoom
   def add_sf_user(sf_user)
-    LOG.info("SF user not found in zoom. Adding to Zoom")
+    email = SalesforceSync.primary_email(sf_user)
+    LOG.info("SF user #{email.to_s} not found in zoom. Adding to Zoom")
     data = { action: 'create',
              user_info: {
-                 email: SalesforceSync.primary_email(sf_user),
+                 email: email,
                  type: BASIC_USER_TYPE,
                  first_name: sf_user.FirstName,
                  last_name: sf_user.LastName,
@@ -154,7 +155,7 @@ class ZoomSync
 
   # note that this triggers welcome meeting and adds them in 'approved' status
   def add_intro_meeting_registrant(sf_user, meeting_occurrence = nil)
-    LOG.info("SF user not found in zoom. Adding to Zoom")
+    LOG.info("SF user not found in zoom. Adding to Zoom: #{sf_user.try(:as_json)}")
     params = meeting_occurrence.present? ? {occurrence_ids: meeting_occurrence} : {}
     data = {
         email: SalesforceSync.primary_email(sf_user),
