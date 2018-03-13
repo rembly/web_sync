@@ -12,10 +12,11 @@ class OauthToken
   SANDBOX_TOKEN_URL = 'https://test.salesforce.com/services/oauth2/token'
   PRODUCTION_TOKEN_URL = 'https://login.salesforce.com/services/oauth2/token'
 
-  def self.salesforce_token
-    p "Fetching salesforce token"
+  def self.salesforce_token(production = false)
+    token_url = production ? PRODUCTION_TOKEN_URL : SANDBOX_TOKEN_URL
+    p "Fetching salesforce token from #{token_url}"
     begin
-      response = RestClient.post(SANDBOX_TOKEN_URL, { grant_type: 'password', client_id: SALESFORCE_CLIENT_ID, client_secret: SALESFORCE_SECRET,
+      response = RestClient.post(token_url, { grant_type: 'password', client_id: SALESFORCE_CLIENT_ID, client_secret: SALESFORCE_SECRET,
                                                       username: SALESFORCE_USER, password: SALESFORCE_PWD})
       return JSON.parse(response.body)
     rescue RestClient::ExceptionWithResponse => e

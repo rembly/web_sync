@@ -1,4 +1,5 @@
 # update with SMTP information
+deliver_email: false
 to: 'to.email@email.com'
 from: 'from.email@email.com'
 via_options:
