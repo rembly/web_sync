@@ -28,6 +28,7 @@ class SalesforceZoomSync
     sync_sf_updates_to_zoom
     LOG.info('Finished nightly sync')
     send_summary_email
+    # wait for Zoom queue consumer thread to finish and shut down before exiting
     @zoom_client.stop_request_queue_consumer
     @zoom_client.queue_consumer.join
   end
