@@ -90,12 +90,12 @@ class SalesforceZoomSync
 
   def log_zoom_add(users_to_add_to_zoom)
     log("Registering #{users_to_add_to_zoom.try(:size).to_i} users for Intro Call:")
-    users_to_add_to_zoom.each{|user| log("#{user.try(:attrs).try(:as_json)}")} if users_to_add_to_zoom.try(:any?)
+    users_to_add_to_zoom.each{|user| log(sf_user_link(user))} if users_to_add_to_zoom.try(:any?)
   end
 
   def log_sf_update(sf_users, type, intro_date)
     log("Updating #{sf_users.try(:size).to_i} Salesforce records with Intro Call #{type} for #{intro_date}:")
-    sf_users.each{|user| log("#{user.LastName}, #{user.FirstName} #{SalesforceSync.primary_email(user)}")} if sf_users.try(:any?)
+    sf_users.each{|user| log(sf_user_print(user))} if sf_users.try(:any?)
   end
 
   # cache all users registered for intro call
@@ -131,4 +131,11 @@ class SalesforceZoomSync
     str.to_s =~ /^\d+$/
   end
 
+  def sf_user_link(user)
+    "<a href='https://na51.salesforce.com/#{user.Id}'>#{sf_user_print(user)}</a>"
+  end
+
+  def sf_user_print(user)
+    "#{user.LastName}, #{user.FirstName}, #{SalesforceSync.primary_email(user)}"
+  end
 end
