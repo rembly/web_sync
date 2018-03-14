@@ -30,7 +30,13 @@ class PushSync
         sf_user = SalesforceSync.sf_message_user(push_message)
 
         if add_update_event?(push_message) && add_user_to_zoom?(sf_user)
-          @zoom_client.add_intro_meeting_registrant(sf_user)
+          next_call = @zoom_client.next_intro_call_occurrence
+
+          if next_call&.dig('start_time').present?
+            @zoom_client.add_intro_meeting_registrant(sf_user, next_call['occurrence_id'])
+          else
+            LOG.error('Could not find next intro call instance or instance..') unless next_call&.dig('start_time').present?
+          end
         elsif delete_event?(push_message) && sf_user_in_zoom?(sf_user)
           LOG.info("Delete event received. Not removing: #{sf_user.try(:attrs).try(:as_json)}")
           # @zoom_client.remove_user!(zoom_user_from_sf_user(sf_user)['id'])

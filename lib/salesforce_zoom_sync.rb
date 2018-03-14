@@ -37,11 +37,18 @@ class SalesforceZoomSync
     LOG.info('Syncing Salesforce users to Zoom..')
     # get SF users eligible to be added to zoom based on intro call date and rsvp
     eligible_sf_users = @sf.contacts_eligible_for_zoom
+
+    # get the next intro call meeting occurrence
+    next_call = @zoom_client.next_intro_call_occurrence
+    LOG.error('Could not find next intro call instance or instance..') && return unless next_call&.dig('start_time').present?
+
+    LOG.info("The next intro call is on #{next_call['start_time'].to_date}")
+
     # add eligibile sf users to zoom if necessary
     # LOG.debug("#{eligible_sf_users.try(:size).to_i} SF users eligible for zoom: #{eligible_sf_users.try(:attrs)}")
     eligible_sf_users.select(&method(:sf_user_not_in_zoom?)).
                       tap(&method(:log_zoom_add)).
-                      each{|user_to_add| @zoom_client.add_intro_meeting_registrant(user_to_add)}
+                      each{|user_to_add| @zoom_client.add_intro_meeting_registrant(user_to_add, next_call['occurrence_id'])}
   end
 
   def sync_zoom_updates_to_sf

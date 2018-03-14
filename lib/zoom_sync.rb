@@ -134,6 +134,10 @@ class ZoomSync
   def intro_call_participants; webinar_participants_report(id: INTRO_WEBINAR_ID) end
   def intro_call_details; call(endpoint: "webinars/#{INTRO_WEBINAR_ID}") end
 
+  def next_intro_call_occurrence
+    intro_call_details.dig('occurrences')&.first
+  end
+
   def climate_advocacy_details; call(endpoint: "webinars/#{CLIMATE_ADVOCACY_WEBINAR_ID}") end
   def climate_advocacy_registrants; call(endpoint: "webinars/#{CLIMATE_ADVOCACY_WEBINAR_ID}/registrants") end
   def climate_advocacy_participants; webinar_participants_report(id: CLIMATE_ADVOCACY_WEBINAR_ID) end
