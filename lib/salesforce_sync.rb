@@ -68,7 +68,7 @@ class SalesforceSync
     QUERY
 
     LOG.info("#{matched_by_phone.try(:size).to_i} Zoom callers found in SF")
-    matched_by_phone
+    matched_by_phone.try(:first).try(:second).to_a
   end
 
   def set_intro_call_date(contact_id:, date:)

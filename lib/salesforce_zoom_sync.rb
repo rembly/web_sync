@@ -132,7 +132,7 @@ class SalesforceZoomSync
   end
 
   def valid_zoom_user_for_sf?(participant)
-    participant.dig('user_email').present? || ZoomSync.phone_participant?(participant)
+    participant.dig('user_email').present? || SalesforceZoomSync.phone_participant?(participant)
   end
 
   def is_phone?(str)
