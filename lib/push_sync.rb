@@ -8,7 +8,7 @@ require 'active_support/all'
 class PushSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync.log'))
   EMAIL_NOTIFICATION_TO = ENV['EMAIL_NOTIFICATION_TO']
-  PUBSUB_TOPIC = 'ContactUpdated'
+  PUBSUB_TOPIC = 'ContactUpdatedIntroRSVP'
 
   attr_accessor :sf
   attr_accessor :zoom_client
