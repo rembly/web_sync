@@ -36,6 +36,7 @@ class SalesforceSync
       SELECT #{SELECT_FIELDS.join(', ')}
       FROM Contact
       WHERE Intro_Call_RSVP_Date__c != null AND Intro_Call_RSVP_Date__c >= LAST_N_DAYS:30
+        AND HasOptedOutOfEmail= FALSE 
         AND (#{one_field_present_for(EMAIL_FIELDS)})
         AND (#{all_fields_present_for(REQUIRED_FIELDS)})
     QUERY
