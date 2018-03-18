@@ -45,7 +45,7 @@ class SalesforceSync
   end
 
   def sf_users_for_zoom_emails(zoom_users)
-    email_list = zoom_users.map{|zoom_user| zoom_user.dig('user_email')}.compact
+    email_list = zoom_users.map{|zoom_user| zoom_user.dig('user_email')}.compact.delete_if(&:empty?)
 
     matched_contacts = @client.query(<<-QUERY) if email_list.any?
       SELECT #{SELECT_FIELDS.join(', ')}
@@ -59,7 +59,8 @@ class SalesforceSync
 
   # Look up SF users by phone number
   def sf_users_for_zoom_callers(zoom_callers)
-    phone_list = zoom_callers.select{|zu| SalesforceSync.phone_participant?(zu)}.map{|zu| zu.dig('name')}.compact
+    phone_list = zoom_callers.select{|zu| SalesforceSync.
+      phone_participant?(zu)}.map{|zu| zu.dig('name')}.compact.delete_if(&:empty?)
 
     matched_by_phone = @client.search(<<-QUERY) if phone_list.any?
       FIND {#{phone_list.join(' OR ')}}
@@ -108,7 +109,7 @@ class SalesforceSync
   end
 
   def self.all_emails_for_user(sf_user)
-    EMAIL_FIELDS.map(&:to_sym).collect{|email_field| sf_user.try(email_field)}.compact
+    EMAIL_FIELDS.map(&:to_sym).collect{|email_field| sf_user.try(email_field)}.compact.delete_if(&:empty?)
   end
 
   # move from Email to CCL Email 4 picking the first one
