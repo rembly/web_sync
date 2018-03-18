@@ -9,7 +9,6 @@ require 'pry'
 # It will also update SF intro call date for users who attended the intro call
 # Initially this will be run as a nightly script
 class SalesforceZoomSync
-  LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'nightly_sync.log'))
   EMAIL_NOTIFIER = EmailNotifier.new
 
   attr_accessor :sf
@@ -20,21 +19,29 @@ class SalesforceZoomSync
   def initialize
     @sf = SalesforceSync.new
     @zoom_client = ZoomSync.new
-    set_zoom_registrants
-    @summary = ["Nightly Salesforce / Zoom Sync for #{Date.today}"]
-    LOG.info("Salesforce user: #{ENV['SALESFORCE_USER']}");
-    LOG.info('Starting nightly sync')
+  end
+
+  def run_zoom_to_sf_sync
+    set_logger('nightly_sync.log')
+    @summary = ["Setting Intro Call Date. Zoom to Salesforce Sync for #{Date.today}"]
+    @log.info("Starting nightly sync. Salesforce user: #{ENV['SALESFORCE_USER']}")
     sync_zoom_updates_to_sf
-    sync_sf_updates_to_zoom
-    LOG.info('Finished nightly sync')
     send_summary_email
-    # wait for Zoom queue consumer thread to finish and shut down before exiting
-    @zoom_client.stop_request_queue_consumer
-    @zoom_client.queue_consumer.join
+    wait_for_zoom_queue_thread
+  end
+
+  def run_sf_to_zoom_sync
+    set_logger('weekly_sync.log')
+    @summary = ["Registering People for Intro Call. Salesforce to Zoom Sync for #{Date.today}"]
+    @log.info("Starting nightly sync. Salesforce user: #{ENV['SALESFORCE_USER']}")
+    set_zoom_registrants
+    sync_sf_updates_to_zoom
+    send_summary_email
+    wait_for_zoom_queue_thread
   end
 
   def sync_sf_updates_to_zoom
-    LOG.info('Syncing Salesforce users to Zoom..')
+    @log.info('Syncing Salesforce users to Zoom..')
     # get SF users eligible to be added to zoom based on intro call date and rsvp
     eligible_sf_users = @sf.contacts_eligible_for_zoom
 
@@ -45,14 +52,14 @@ class SalesforceZoomSync
     LOG.info("The next intro call is on #{next_call['start_time'].to_date}")
 
     # add eligibile sf users to zoom if necessary
-    # LOG.debug("#{eligible_sf_users.try(:size).to_i} SF users eligible for zoom: #{eligible_sf_users.try(:attrs)}")
+    # @log.debug("#{eligible_sf_users.try(:size).to_i} SF users eligible for zoom: #{eligible_sf_users.try(:attrs)}")
     eligible_sf_users.select(&method(:sf_user_not_in_zoom?)).
                       tap(&method(:log_zoom_add)).
                       each{|user_to_add| @zoom_client.add_intro_meeting_registrant(user_to_add, next_call['occurrence_id'])}
   end
 
   def sync_zoom_updates_to_sf
-    LOG.info('Syncing Zoom updates to SF')
+    @log.info('Syncing Zoom updates to SF')
     # get all zoom users who have watched the most recent intro call for more than the minimum duration
     sync_intro_call_webinar_users
   end
@@ -65,14 +72,14 @@ class SalesforceZoomSync
 
   def sync_intro_call_webinar_users
     intro_participants = @zoom_client.intro_call_participants
-    LOG.debug("#{intro_participants.try(:size).to_i} Intro Call users:")
+    @log.debug("#{intro_participants.try(:size).to_i} Intro Call users:")
     add_meeting_participants(intro_participants)
   end
 
   def add_meeting_participants(meeting_participants)
     participants = meeting_participants.dig('participants').select(&method(:valid_intro_call_duration)).
                     select(&method(:valid_zoom_user_for_sf?))
-    LOG.debug('No intro call participants to sync') && return unless participants.any?
+    @log.debug('No intro call participants to sync') && return unless participants.any?
     intro_call_date = participants.try(:first).dig('join_time').try(:to_date)
     update_zoom_attendees(participants, intro_call_date)
     update_zoom_callers(participants, intro_call_date)
@@ -92,7 +99,7 @@ class SalesforceZoomSync
 
   # log messages to logfile and build email summary for summary report
   def log(message)
-    LOG.info(message)
+    @log.info(message)
     summary << message
   end
 
@@ -109,7 +116,7 @@ class SalesforceZoomSync
   # cache all users registered for intro call
   def set_zoom_registrants
     @zoom_registrants = @zoom_client.intro_call_registrants['registrants']
-    LOG.error('MAX registrants for intro call') if @zoom_registrants.try(:size).to_i == ZoomSync::MAX_PAGE_SIZE
+    @log.error('MAX registrants for intro call') if @zoom_registrants.try(:size).to_i == ZoomSync::MAX_PAGE_SIZE
   end
 
   def sf_user_not_in_zoom?(sf_user)
@@ -145,5 +152,16 @@ class SalesforceZoomSync
 
   def sf_user_print(user)
     "#{user.LastName}, #{user.FirstName}, #{SalesforceSync.primary_email(user)}"
+  end
+
+  def set_logger(logger_name)
+    @log = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', logger_name))
+  end
+
+  # wait for Zoom queue consumer thread to finish and shut down before exiting
+  def wait_for_zoom_queue_thread
+    @zoom_client.stop_request_queue_consumer
+    @zoom_client.queue_consumer.join
+    @log.info('Finished SF to Zoom sync')
   end
 end
