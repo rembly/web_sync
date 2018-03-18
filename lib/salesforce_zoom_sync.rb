@@ -22,7 +22,7 @@ class SalesforceZoomSync
   end
 
   def run_zoom_to_sf_sync
-    set_logger('nightly_sync.log')
+    set_logger('weekly_sync.log')
     @summary = ["Setting Intro Call Date. Zoom to Salesforce Sync for #{Date.today}"]
     @log.info("Starting nightly sync. Salesforce user: #{ENV['SALESFORCE_USER']}")
     sync_zoom_updates_to_sf
@@ -31,7 +31,7 @@ class SalesforceZoomSync
   end
 
   def run_sf_to_zoom_sync
-    set_logger('weekly_sync.log')
+    set_logger('nightly_sync.log')
     @summary = ["Registering People for Intro Call. Salesforce to Zoom Sync for #{Date.today}"]
     @log.info("Starting nightly sync. Salesforce user: #{ENV['SALESFORCE_USER']}")
     set_zoom_registrants
@@ -47,10 +47,8 @@ class SalesforceZoomSync
 
     # get the next intro call meeting occurrence
     next_call = @zoom_client.next_intro_call_occurrence
-    LOG.error('Could not find next intro call instance or instance..') && return unless next_call&.dig('start_time').present?
-
-    LOG.info("The next intro call is on #{next_call['start_time'].to_date}")
-
+    @log.error('Could not find next intro call instance or instance..') && return unless next_call&.dig('start_time').present?
+    @log.info("The next intro call is on #{next_call['start_time'].to_date}")
     # add eligibile sf users to zoom if necessary
     # @log.debug("#{eligible_sf_users.try(:size).to_i} SF users eligible for zoom: #{eligible_sf_users.try(:attrs)}")
     eligible_sf_users.select(&method(:sf_user_not_in_zoom?)).
@@ -139,7 +137,7 @@ class SalesforceZoomSync
   end
 
   def valid_zoom_user_for_sf?(participant)
-    participant.dig('user_email').present? || SalesforceZoomSync.phone_participant?(participant)
+    participant.dig('user_email').present? || SalesforceSync.phone_participant?(participant)
   end
 
   def is_phone?(str)
