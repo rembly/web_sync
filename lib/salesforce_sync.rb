@@ -112,6 +112,10 @@ class SalesforceSync
     EMAIL_FIELDS.map(&:to_sym).collect{|email_field| sf_user.try(email_field)}.compact.delete_if(&:empty?)
   end
 
+  def self.all_phone_numbers_for_user(sf_user)
+    EMAIL_FIELDS.map(&:to_sym).collect{|phone_field| sf_user.try(phone_field)}.compact.delete_if(&:empty?)
+  end
+
   # move from Email to CCL Email 4 picking the first one
   def self.primary_email(sf_user)
     self.all_emails_for_user(sf_user).try(:first)

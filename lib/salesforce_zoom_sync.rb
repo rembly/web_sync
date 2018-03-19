@@ -79,20 +79,23 @@ class SalesforceZoomSync
                     select(&method(:valid_zoom_user_for_sf?))
     @log.debug('No intro call participants to sync') && return unless participants.any?
     intro_call_date = participants.try(:first).dig('join_time').try(:to_date)
-    update_zoom_attendees(participants, intro_call_date)
-    update_zoom_callers(participants, intro_call_date)
+    matched_email = update_zoom_attendees(participants, intro_call_date)
+    matched_phone = update_zoom_callers(participants, intro_call_date)
+    log_unmatched_in_sf(matched_email.to_a | matched_phone.to_a, participants)
   end
 
   def update_zoom_attendees(participants, intro_call_date)
     matched_email = @sf.sf_users_for_zoom_emails(participants)
     log_sf_update(matched_email, 'attendees', intro_call_date)
     matched_email.each{|user| @sf.set_intro_date_for_contact(contact: user, date: intro_call_date) } if matched_email.try(:any?)
+    matched_email
   end
 
   def update_zoom_callers(participants, intro_call_date)
     matched_phone = @sf.sf_users_for_zoom_callers(participants)
     log_sf_update(matched_phone, 'callers', intro_call_date)
     matched_phone.each{|user| @sf.set_intro_date_for_contact(contact: user, date: intro_call_date) } if matched_phone.try(:any?)
+    matched_phone
   end
 
   # log messages to logfile and build email summary for summary report
@@ -144,12 +147,32 @@ class SalesforceZoomSync
     str.to_s =~ /^\d+$/
   end
 
+  def log_unmatched_in_sf(matched_sf, zoom_participants)
+    log('No intro call users were unmatched') && return if (matched_sf.to_a.none? || zoom_participants.to_a.none?)
+
+    zoom_participants.select{|zoom_user| zoom_user_not_in_sf_list(zoom_user, matched_sf)}.
+                      tap{|unmatched| log("#{unmatched.size} Zoom users could not be found in Salesforce:")}.
+                      each{|unmatched_intro_attendee| log(zoom_user_print(unmatched_intro_attendee))}
+  end
+
+  def zoom_user_not_in_sf_list(zoom_user, sf_list)
+    sf_list.none? do |sf_user|
+      SalesforceSync.all_emails_for_user(sf_user).any?{|sf_email| zoom_user['user_email'].to_s.casecmp(sf_email).zero?} ||
+          SalesforceSync.all_phone_numbers_for_user(sf_user).any?{|sf_phone| sf_phone.to_s.gsub(/[^\d]/,'').include?(zoom_user['name'].to_s)}
+    end
+  end
+
   def sf_user_link(user)
     "<a href='https://na51.salesforce.com/#{user.Id}'>#{sf_user_print(user)}</a>"
   end
 
   def sf_user_print(user)
     "#{user.LastName}, #{user.FirstName}, #{SalesforceSync.primary_email(user)}"
+  end
+
+  def zoom_user_print(user)
+    name = "Name: #{user.dig('name')}"
+    user.dig('user_email').present? ? name + ", Email: #{user.dig('user_email')}" : name
   end
 
   def set_logger(logger_name)
