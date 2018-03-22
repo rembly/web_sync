@@ -48,7 +48,7 @@ class SalesforceZoomSync
     # get the next intro call meeting occurrence
     next_call = @zoom_client.next_intro_call_occurrence
     @log.error('Could not find next intro call instance or instance..') && return unless next_call&.dig('start_time').present?
-    @log.info("The next intro call is on #{next_call['start_time'].to_date}")
+    @log.info("The next intro call is on #{next_call['start_time'].to_date}. Occurrence ID: #{next_call['occurrence_id']}")
     # add eligibile sf users to zoom if necessary
     # @log.debug("#{eligible_sf_users.try(:size).to_i} SF users eligible for zoom: #{eligible_sf_users.try(:attrs)}")
     eligible_sf_users.select(&method(:sf_user_not_in_zoom?)).
@@ -78,7 +78,7 @@ class SalesforceZoomSync
     participants = meeting_participants.dig('participants').select(&method(:valid_intro_call_duration)).
                     select(&method(:valid_zoom_user_for_sf?))
     @log.debug('No intro call participants to sync') && return unless participants.any?
-    intro_call_date = participants.try(:first).dig('join_time').try(:to_date)
+    intro_call_date = participants.try(:first).dig('join_time')&.to_datetime&.localtime&.to_date
     matched_email = update_zoom_attendees(participants, intro_call_date)
     matched_phone = update_zoom_callers(participants, intro_call_date)
     log_unmatched_in_sf(matched_email.to_a | matched_phone.to_a, participants)
@@ -158,8 +158,13 @@ class SalesforceZoomSync
   def zoom_user_not_in_sf_list(zoom_user, sf_list)
     sf_list.none? do |sf_user|
       SalesforceSync.all_emails_for_user(sf_user).any?{|sf_email| zoom_user['user_email'].to_s.casecmp(sf_email).zero?} ||
-          SalesforceSync.all_phone_numbers_for_user(sf_user).any?{|sf_phone| sf_phone.to_s.gsub(/[^\d]/,'').include?(zoom_user['name'].to_s)}
+          SalesforceSync.all_phone_numbers_for_user(sf_user).any?{|sf_phone| phone_match?(sf_phone, zoom_user['name'])}
     end
+  end
+
+  def phone_match?(sf_phone, zoom_phone)
+    sf = sf_phone.to_s.gsub(/[^\d]/,'')
+    sf.include?(zoom_phone.to_s) || zoom_phone.to_s.include?(sf)
   end
 
   def sf_user_link(user)
