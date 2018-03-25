@@ -7,6 +7,9 @@
 # Ignore uploaded files
 /uploads
 
+# data files
+/data/*.json
+
 # APP SPECIFIC
 /public/resources/nis_*
 

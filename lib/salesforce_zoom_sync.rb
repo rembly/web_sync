@@ -1,6 +1,7 @@
 require_relative 'salesforce_sync'
 require_relative 'zoom_sync'
 require_relative './web_sync/email_notifier'
+require_relative './web_sync/intro_call_data'
 require 'active_support/all'
 require 'awesome_print'
 require 'pry'
@@ -49,8 +50,9 @@ class SalesforceZoomSync
     next_call = @zoom_client.next_intro_call_occurrence
     @log.error('Could not find next intro call instance or instance..') && return unless next_call&.dig('start_time').present?
     @log.info("The next intro call is on #{next_call['start_time'].to_date}. Occurrence ID: #{next_call['occurrence_id']}")
+    # log intro call occurrence ID to file. Only write if not present in file
+    IntroCallData.set_intro_call_occurrence(date: next_call['start_time'].to_datetime&.localtime&.to_date, occurrence_id: next_call['occurrence_id'])
     # add eligibile sf users to zoom if necessary
-    # @log.debug("#{eligible_sf_users.try(:size).to_i} SF users eligible for zoom: #{eligible_sf_users.try(:attrs)}")
     eligible_sf_users.select(&method(:sf_user_not_in_zoom?)).
                       tap(&method(:log_zoom_add)).
                       each{|user_to_add| @zoom_client.add_intro_meeting_registrant(user_to_add, next_call['occurrence_id'])}
@@ -82,6 +84,8 @@ class SalesforceZoomSync
     matched_email = update_zoom_attendees(participants, intro_call_date)
     matched_phone = update_zoom_callers(participants, intro_call_date)
     log_unmatched_in_sf(matched_email.to_a | matched_phone.to_a, participants)
+    # get intro call occurrence ID from file and record registrants who didn't show up
+    log_missed_call(participants)
   end
 
   def update_zoom_attendees(participants, intro_call_date)
@@ -112,6 +116,23 @@ class SalesforceZoomSync
   def log_sf_update(sf_users, type, intro_date)
     log("Updating #{sf_users.try(:size).to_i} Salesforce records with Intro Call #{type} for #{intro_date}:")
     sf_users.each{|user| log(sf_user_print(user))} if sf_users.try(:any?)
+  end
+
+  def log_missed_call(participants)
+    last_occurrence_id = IntroCallData.get_latest_intro_call
+    log('No previous intro call occurrence found') && return unless last_occurrence_id.present?
+    registrants = @zoom_client.intro_call_registrants(last_occurrence_id).dig('registrants')
+
+    # registrants missing from actual call
+    
+    #look those up in SF
+
+    #set flag
+
+    # matched_email = @sf.sf_users_for_zoom_emails(participants)
+    # log_sf_update(matched_email, 'attendees', intro_call_date)
+    # matched_email.each{|user| @sf.set_intro_date_for_contact(contact: user, date: intro_call_date) } if matched_email.try(:any?)
+    # matched_email
   end
 
   # cache all users registered for intro call

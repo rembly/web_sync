@@ -130,7 +130,11 @@ class ZoomSync
   end
 
   # this defaults to 'approved' registrants only. But all invited are auto-approved at this point
-  def intro_call_registrants; call(endpoint: "webinars/#{INTRO_WEBINAR_ID}/registrants") end
+  def intro_call_registrants(occurrence_id = nil)
+    params = occurrence_id.present? ? {occurrence_id: occurrence_id} : {}
+    call(endpoint: "webinars/#{INTRO_WEBINAR_ID}/registrants", params: params) 
+  end
+  
   def intro_call_participants; webinar_participants_report(id: INTRO_WEBINAR_ID) end
   def intro_call_details; call(endpoint: "webinars/#{INTRO_WEBINAR_ID}") end
 
