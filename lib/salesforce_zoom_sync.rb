@@ -85,7 +85,7 @@ class SalesforceZoomSync
     matched_phone = update_zoom_callers(participants, intro_call_date)
     log_unmatched_in_sf(matched_email.to_a | matched_phone.to_a, participants)
     # get intro call occurrence ID from file and record registrants who didn't show up
-    log_missed_call(participants)
+    log_missed_call(participants, matched_email.to_a | matched_phone.to_a)
   end
 
   def update_zoom_attendees(participants, intro_call_date)
@@ -118,21 +118,19 @@ class SalesforceZoomSync
     sf_users.each{|user| log(sf_user_print(user))} if sf_users.try(:any?)
   end
 
-  def log_missed_call(participants)
+  def log_missed_call(participants, matched_sf)
     last_occurrence_id = IntroCallData.get_latest_intro_call
     log('No previous intro call occurrence found') && return unless last_occurrence_id.present?
     registrants = @zoom_client.intro_call_registrants(last_occurrence_id).dig('registrants')
-
+    # registrant SF records (because we need SF records for phone attendees)
+    sf_registrants = @sf.sf_users_for_zoom_emails(registrants)
+    # URI TOO LARGE
     # registrants missing from actual call
-    
-    #look those up in SF
-
+    missing_from_intro_call = sf_registrants.select{|registrant| matched_sf.none?{|attended| attended.Id == registrant.Id}}
+    log("**** #{sf_registrants.size} were registered for occurrence #{last_occurrence_id} and #{matched_sf.size} were matched ****")
+    log("**** #{missing_from_intro_call.size} Registrants missed the intro call. Using occurrence #{last_occurrence_id}:")
+    missing_from_intro_call.each{|user| log(sf_user_link(user))} if missing_from_intro_call.try(:any?)
     #set flag
-
-    # matched_email = @sf.sf_users_for_zoom_emails(participants)
-    # log_sf_update(matched_email, 'attendees', intro_call_date)
-    # matched_email.each{|user| @sf.set_intro_date_for_contact(contact: user, date: intro_call_date) } if matched_email.try(:any?)
-    # matched_email
   end
 
   # cache all users registered for intro call

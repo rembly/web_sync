@@ -45,8 +45,8 @@ class SalesforceSync
   end
 
   def sf_users_for_zoom_emails(zoom_users)
-    email_list = zoom_users.map{|zoom_user| zoom_user.dig('user_email')}.compact.delete_if(&:empty?)
-
+    email_list = zoom_users.map{|zoom_user| zoom_user.dig('user_email') || zoom_user.dig('email')}.compact.delete_if(&:empty?)
+    
     matched_contacts = @client.query(<<-QUERY) if email_list.any?
       SELECT #{SELECT_FIELDS.join(', ')}
       FROM Contact
