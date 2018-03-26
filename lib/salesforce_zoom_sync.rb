@@ -124,7 +124,6 @@ class SalesforceZoomSync
     registrants = @zoom_client.intro_call_registrants(last_occurrence_id).dig('registrants')
     # registrant SF records (because we need SF records for phone attendees)
     sf_registrants = @sf.sf_users_for_zoom_emails(registrants)
-    # URI TOO LARGE
     # registrants missing from actual call
     missing_from_intro_call = sf_registrants.select{|registrant| matched_sf.none?{|attended| attended.Id == registrant.Id}}
     log("**** #{sf_registrants.size} were registered for occurrence #{last_occurrence_id} and #{matched_sf.size} were matched ****")

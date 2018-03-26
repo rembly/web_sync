@@ -46,12 +46,15 @@ class SalesforceSync
 
   def sf_users_for_zoom_emails(zoom_users)
     email_list = zoom_users.map{|zoom_user| zoom_user.dig('user_email') || zoom_user.dig('email')}.compact.delete_if(&:empty?)
-    
-    matched_contacts = @client.query(<<-QUERY) if email_list.any?
-      SELECT #{SELECT_FIELDS.join(', ')}
-      FROM Contact
-      WHERE #{quoted_email_list(email_list)}
-    QUERY
+
+    matched_contacts = email_list.each_slice(30).reduce([]) do |matched, emails|
+      matched |= @client.query(<<-QUERY).to_a if email_list.any?
+        SELECT #{SELECT_FIELDS.join(', ')}
+        FROM Contact
+        WHERE #{quoted_email_list(emails)}
+      QUERY
+      matched
+    end
 
     LOG.info("#{matched_contacts.size} Zoom participants found in SF by email")
     matched_contacts
