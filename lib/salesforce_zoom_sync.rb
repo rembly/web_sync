@@ -124,12 +124,10 @@ class SalesforceZoomSync
     registrants = @zoom_client.intro_call_registrants(last_occurrence_id).dig('registrants')
     # registrant SF records (because we need SF records for phone attendees)
     sf_registrants = @sf.sf_users_for_zoom_emails(registrants)
-    # registrants missing from actual call
+    # registrants missing from actual call. Log count and update intro missed flag
     missing_from_intro_call = sf_registrants.select{|registrant| matched_sf.none?{|attended| attended.Id == registrant.Id}}
-    log("**** #{sf_registrants.size} were registered for occurrence #{last_occurrence_id} and #{matched_sf.size} were matched ****")
     log("**** #{missing_from_intro_call.size} Registrants missed the intro call. Using occurrence #{last_occurrence_id}:")
-    missing_from_intro_call.each{|user| log(sf_user_link(user))} if missing_from_intro_call.try(:any?)
-    #set flag
+    missing_from_intro_call.each{|user| log(sf_user_link(user)); @sf.set_intro_call_missed(contact: user) }
   end
 
   # cache all users registered for intro call

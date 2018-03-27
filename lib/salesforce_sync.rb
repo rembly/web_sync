@@ -16,10 +16,11 @@ class SalesforceSync
 
   INTRO_CALL_RSVP_FIELD = 'Intro_Call_RSVP_Date__c'
   INTRO_CALL_DATE_FIELD = 'Date_of_Intro_Call__c'
+  INTRO_CALL_MISSED_FIELD = 'Intro_Call_Missed__c'
   EMAIL_FIELDS = %w(Email Alternate_Email__c CCL_Email_Three__c CCL_Email_Four__c)
   PHONE_FIELDS = %w(Phone HomePhone Mobile_Phone_Formatted2__c)
   REQUIRED_FIELDS = %w(Id FirstName LastName)
-  SELECT_FIELDS = [*REQUIRED_FIELDS, *PHONE_FIELDS, *EMAIL_FIELDS, INTRO_CALL_DATE_FIELD, INTRO_CALL_RSVP_FIELD]
+  SELECT_FIELDS = [*REQUIRED_FIELDS, *PHONE_FIELDS, *EMAIL_FIELDS, INTRO_CALL_DATE_FIELD, INTRO_CALL_RSVP_FIELD, INTRO_CALL_MISSED_FIELD]
 
   def initialize
     @token = OauthToken.salesforce_token
@@ -75,17 +76,18 @@ class SalesforceSync
     matched_by_phone.try(:first).try(:second).to_a
   end
 
-  def set_intro_call_date(contact_id:, date:)
-    #TODO: remove comment on next line to enable zoom to SF sync
-    #@client.update('Contact', Id: contact_id, Intro_Call_RSVP_Date__c: date.rfc3339)
-  end
-
   def set_intro_date_for_contact(contact:, date:)
     if contact.present? && (contact.Date_of_Intro_Call__c.blank? || contact.Date_of_Intro_Call__c.to_date < date)
       contact.Date_of_Intro_Call__c = date.rfc3339
       #TODO: remove comment on next line to enable zoom to SF sync
       #contact.save
     end
+  end
+
+  def set_intro_call_missed(contact:)
+    contact.Intro_Call_Missed__c = true
+    #TODO: remove comment for live updates of intro call missed flag
+    # contact.save
   end
 
   # fast lookup by ID of only the fields we need for sync
