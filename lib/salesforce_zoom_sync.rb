@@ -114,19 +114,19 @@ class SalesforceZoomSync
   end
 
   def log_sf_update(sf_users, type, intro_date)
-    log("Updating #{sf_users.try(:size).to_i} Salesforce records with Intro Call #{type} for #{intro_date}:")
+    log("<br/>Updating #{sf_users.try(:size).to_i} Salesforce records with Intro Call #{type} for #{intro_date}:")
     sf_users.each{|user| log(sf_user_print(user))} if sf_users.try(:any?)
   end
 
   def log_missed_call(participants, matched_sf)
     last_occurrence_id = IntroCallData.get_latest_intro_call
-    log('No previous intro call occurrence found') && return unless last_occurrence_id.present?
+    log('<br/>No previous intro call occurrence found') && return unless last_occurrence_id.present?
     registrants = @zoom_client.intro_call_registrants(last_occurrence_id).dig('registrants')
     # registrant SF records (because we need SF records for phone attendees)
     sf_registrants = @sf.sf_users_for_zoom_emails(registrants)
     # registrants missing from actual call. Log count and update intro missed flag
     missing_from_intro_call = sf_registrants.select{|registrant| matched_sf.none?{|attended| attended.Id == registrant.Id}}
-    log("**** #{missing_from_intro_call.size} Registrants missed the intro call. Using occurrence #{last_occurrence_id}:")
+    log("<br/>#{missing_from_intro_call.size} Registrants missed the intro call. Using occurrence #{last_occurrence_id}:")
     missing_from_intro_call.each{|user| log(sf_user_link(user)); @sf.set_intro_call_missed(contact: user) }
   end
 
@@ -167,7 +167,7 @@ class SalesforceZoomSync
     log('No intro call users were unmatched') && return if (matched_sf.to_a.none? || zoom_participants.to_a.none?)
 
     zoom_participants.select{|zoom_user| zoom_user_not_in_sf_list(zoom_user, matched_sf)}.
-                      tap{|unmatched| log("#{unmatched.size} Zoom users could not be found in Salesforce:")}.
+                      tap{|unmatched| log("<br/>#{unmatched.size} Zoom users could not be found in Salesforce:")}.
                       each{|unmatched_intro_attendee| log(zoom_user_print(unmatched_intro_attendee))}
   end
 

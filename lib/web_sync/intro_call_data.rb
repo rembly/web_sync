@@ -10,7 +10,7 @@ class IntroCallData
     # find the latest occurrence
     def self.get_latest_intro_call
         if(data = self.get_data)
-            last_call = data.keys.find{|date| date.to_date < Date.today && date.to_date > (Date.today - 1.week)}
+            last_call = data.keys.find{|date| date.to_date <= Date.today && date.to_date > (Date.today - 1.week)}
             last_call.present? ? data[last_call] : ''
         end
     end
