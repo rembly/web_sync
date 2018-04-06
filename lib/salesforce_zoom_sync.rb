@@ -105,7 +105,7 @@ class SalesforceZoomSync
   # log messages to logfile and build email summary for summary report
   def log(message)
     @log.info(message)
-    summary << message
+    summary << message << '<br/>'
   end
 
   def log_zoom_add(users_to_add_to_zoom)
