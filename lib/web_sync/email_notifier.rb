@@ -7,6 +7,17 @@ class EmailNotifier
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'email.log'))
   EMAIL_CONFIG = YAML.load_file(File.join(File.dirname(__FILE__), '..', '..', 'config', 'smtp_config.yml'))
 
+  TEMPLATE = <<-EMAIL
+    <html>
+      <head>
+        <meta content="text/html; charset=utf-8">
+      </head>
+      <body>
+        %s
+      </body>
+    </html>
+  EMAIL
+
   def initialize
     @to = EMAIL_CONFIG['to']
     @from = EMAIL_CONFIG['from']
@@ -16,7 +27,7 @@ class EmailNotifier
 
   def send_email(subject:, body:)
     if @deliver_email
-      Pony.mail(body: body, subject: subject, to: @to, from: @from, via: :smtp, via_options: @options)
+      Pony.mail(html_body: body, subject: subject, to: @to, from: @from, via: :smtp, via_options: @options)
     end
     LOG.info("To/From: #{@to}/#{@from}, Subject: #{subject}, Body: #{body}, Options: #{@options}")
   end

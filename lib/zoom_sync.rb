@@ -196,17 +196,20 @@ class ZoomSync
 
   # gather pages if there is a next_page token and the result set contains participants
   def gather_pages?(results)
-    results.dig('next_page_token').present? && (results.dig('participants').present? || results.dig('registrants').present?)
+    (results.dig('next_page_token').present? && results.dig('participants').present?) ||
+        (results.dig('page_number').to_i < results.dig('page_count').to_i && results.dig('registrants').present?)
   end
 
   # get next page by re-sending same request but with next page token. This will block for max api call rate duration
   def get_next_page(response, results)
     request_uri = URI.parse(response.request.url)
     endpoint = request_uri.path.gsub(/\/v2\//,'')
-    exclude_params = %w(page_size access_token next_page_token)
+    exclude_params = %w(access_token next_page_token page_number)
     params = CGI.parse(request_uri.query).except(*exclude_params).inject({}){|map, (k, v)| map[k] = v.first; map}
+    next_page_params = endpoint.include?('participants') ? {next_page_token: results.dig('next_page_token')} :
+                           {page_number: results.dig('page_number').to_i + 1}
     sleep MAX_CALLS_PER_SECOND
-    call(endpoint: endpoint, params: params.merge({next_page_token: results.dig('next_page_token')}))
+    call(endpoint: endpoint, params: params.merge(next_page_params))
   end
 
   # merge the participant or registrant list of two result sets.
