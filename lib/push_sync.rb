@@ -64,7 +64,7 @@ class PushSync
 
   def add_user_to_zoom?(sf_user)
     # re-adding an already-registered user does not add duplicates or send another email
-    valid_user_for_zoom?(sf_user) # && !sf_user_in_zoom?(sf_user)
+    valid_user_for_zoom?(sf_user)
   end
 
   # cache all zoom users, use this rather than re-querying. Maybe only need email address.. for now get everything

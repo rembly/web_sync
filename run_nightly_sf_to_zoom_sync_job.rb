@@ -6,6 +6,8 @@ Process.setproctitle('nightly_sync')
 LOG = Logger.new(File.join(File.dirname(__FILE__), 'log', 'nightly_sync.log'))
 p '****** Running daily SF to Zoom Sync ******'
 LOG.info('Running sync job...')
+p 'Killing push job...'
+`pkill -f salesforce_push_sync`
 begin
   SalesforceZoomSync.new.run_sf_to_zoom_sync
 rescue Exception => e
