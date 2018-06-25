@@ -13,6 +13,10 @@
 # APP SPECIFIC
 /public/resources/nis_*
 
+# Don't save google sheet keys
+google_sheet_sync.json
+*secret.json
+
 # Ignore bundler config.
 /.bundle
 
@@ -173,6 +177,7 @@ build-iPhoneSimulator/
 .rvmrc
 .env
 .env_prod
+.env_prod*
 config/smtp_config.yml
 ### Rails template
 *.rbc

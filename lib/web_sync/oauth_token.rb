@@ -1,6 +1,8 @@
 require 'rest-client'
 require 'json'
 require 'active_support/all'
+require 'googleauth'
+require 'fileutils'
 
 # Generate token for interacting with Salesforce API
 class OauthToken
@@ -13,6 +15,10 @@ class OauthToken
   SANDBOX_TOKEN_URL = 'https://test.salesforce.com/services/oauth2/token'
   PRODUCTION_TOKEN_URL = 'https://login.salesforce.com/services/oauth2/token'
 
+  SERVICE_ACCOUNT_KEY_FILE = 'google_sheet_sync.json'.freeze
+  GOOGLE_SHEET_READONLY_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly'
+  GOOGLE_SHEEET_READWRITE_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
+
   def self.salesforce_token
     token_url = IS_PRODUCTION ? PRODUCTION_TOKEN_URL : SANDBOX_TOKEN_URL
     p "Fetching salesforce token from #{token_url}"
@@ -24,4 +30,12 @@ class OauthToken
       e.response
     end
   end
+
+  def self.google_service_token
+    authorizer = Google::Auth::ServiceAccountCredentials.make_creds( 
+      json_key_io: File.open(SERVICE_ACCOUNT_KEY_FILE), scope: [GOOGLE_SHEET_READONLY_SCOPE])
+    authorizer.fetch_access_token!
+    authorizer
+  end
+
 end
