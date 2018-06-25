@@ -179,6 +179,7 @@ build-iPhoneSimulator/
 .env_prod
 .env_prod*
 config/smtp_config.yml
+config/database.yml
 ### Rails template
 *.rbc
 capybara-*.html

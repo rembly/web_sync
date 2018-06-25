@@ -1,0 +1,19 @@
+development:
+  adapter: mysql2
+  encoding: utf8
+  reconnect: false
+  database: name_of_databse
+  username: user
+  password: password
+  host: name.of.server
+  port: 3306
+
+production:
+  adapter: mysql2
+  encoding: utf8
+  reconnect: false
+  database: name_of_databse
+  username: user
+  password: password
+  host: name.of.server
+  port: 3306

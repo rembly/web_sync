@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 source "https://rubygems.org"
 ruby '2.5.1'
-
+gem 'mysql2', '~> 0.5.1'
 gem 'json_web_token', '~> 0.3.5'
 gem 'jwt', '~> 2.1'
 gem 'rest-client', '~> 2.0', '>= 2.0.2'
