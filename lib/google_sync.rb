@@ -28,14 +28,32 @@ class GoogleSync
    end
 
    def sync_endorsers
-      current_endorsers = get_current_endorser_data
-      clear_wb_endorsers
-      # insert
+      return unless valid_data_columns?
 
+      current_endorsers = get_vetted_endorsers
+      clear_wp_endorsers
+      
+      begin
+         wp_client.query(<<-INSERT)
+            INSERT INTO #{WP_ENDORSER_TABLE}(first_name, last_name, title, email, phone, organization_name,
+               website_url, address1, address2, city, state, zip, type, vetted, created_at)
+            VALUES
+               #{current_endorsers.map{|endorser_row| "('#{endorser_row.join("','")}', NOW())"}.join(',')}
+         INSERT
+         
+         LOG.info("Synchronized #{current_endorsers.size} endorsers to Wordpress")
+      rescue Mysql2::Error => e
+         LOG.error("Unable to synchronize endorsers to Wordpress: #{e.message}")
+         LOG.error(e.backtrace.inspect)
+      end
    end
 
    def clear_wp_endorsers
       wp_client.query("DELETE from #{WP_ENDORSER_TABLE}")
+   end
+
+   def get_vetted_endorsers
+      get_current_endorser_data.select{|endorser_row| endorser_row[13].to_s.downcase.starts_with?('y')}
    end
 
    def get_current_endorser_data
@@ -43,8 +61,12 @@ class GoogleSync
    end
 
    # column headings must match and be in the same order to ensure sync works correctly
-   def validate_data_columns
-      column_headings == COLUMN_HEADINGS
+   def valid_data_columns?
+      if column_headings != COLUMN_HEADINGS
+         LOG.error('Endorser spreadsheet columns have been re-arranged or modified. Unable to sync to Wordpress')
+      end
+
+      true
    end
 
    def column_headings
