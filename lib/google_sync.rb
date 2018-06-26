@@ -9,7 +9,7 @@ require_relative 'web_sync/mysql_connection'
 
 class GoogleSync
    APPLICATION_NAME = ENV['GOOGLE_APP_NAME']
-   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync.log'))
+   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync_endorsers.log'))
    ENDORSER_SHEET_ID = ENV['GOOGLE_ENDORSER_SHEET_ID']
    ENDORSER_DATA_RANGE = 'Sheet1!A2:N'.freeze
    COLUMN_HEADING_RANGE = 'Sheet1!A1:N1'.freeze

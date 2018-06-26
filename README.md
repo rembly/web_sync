@@ -31,13 +31,17 @@ ruby ./start_salesforce_sync_job.rb
 
 Run the nightly sync job
 ```
-ruby ./run_nightly_sync_job.rb
+ruby ./run_nightly_sf_to_zoom_sync_job.rb
+```
+
+Run the weekly zoom to saleforce sync job
+```
+ruby ./run_weekly_zoom_to_sf_job.rb
 ```
 
 ## Logging and Notification
 
-* Email is currently disabled from sending but will be logged to /log/email.log.
-* Nightly sync logging is at /log/nightly_sync.log.
+* Email settings, including whether to send email is set in config/smtp_config.yml.
 * General information about the sync process is logged to /log/sync.log.
 
 ## Example Interactive Console Usage
@@ -45,8 +49,11 @@ ruby ./run_nightly_sync_job.rb
 Run nightly script
 ```
 irb -r ./lib/salesforce_zoom_sync.rb
+sf_zoom_sync = SalesforceZoomSync.new
 # run nightly script
-SalesforceZoomSync.new
+sf_zoom_sync.run_sf_to_zoom_sync
+# run weekly sync
+sf_zoom_sync.run_zoom_to_sf_sync
 ```
 
 Start service to register for Salesforce push notifications and update Zoom
@@ -72,10 +79,19 @@ Interactive Salesforce examples
 ```
 require 'awesome_print'
 sf = SalesforceSync.new
-all_users = sf.all_contacts
+all_users = sf.all_users
 ap all_users
 # manual query
 meeting_details = sf.client.query("SELECT Id, FirstName, LastName, Birthdate, Email, Intro_Call_RSVP_Date__c FROM Contact")
+```
+## Get Endorsers
+
+```
+google_sync = GoogleSync.new
+# fetch endorser data
+endorsers = google_sync.get_current_endorser_data
+# synchronize endorsers to Wordpress
+google_sync.sync_endorsers
 ```
 
 ## Deployment
