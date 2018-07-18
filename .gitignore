@@ -8,7 +8,8 @@
 /uploads
 
 # data files
-/data/*.json
+/data/*
+!/data/.keep
 
 # APP SPECIFIC
 /public/resources/nis_*

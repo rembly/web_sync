@@ -31,6 +31,26 @@ class SalesforceSync
     @client.query("SELECT Id, FirstName, LastName, Birthdate, Email, Intro_Call_RSVP_Date__c FROM Contact")
   end
 
+  def ccl_chapter_locations
+    @client.query(<<-QUERY)
+      SELECT Id, Name, City__c, Country__c, Creation_Stage__c, Group_Description__c,
+        Region__c, State__c, State_Province__c, Web_City__c, MALatitude__c, MALongitude__c,
+        Group_Email__c, Web_Chapter_Page__c  
+      FROM Group__c
+      WHERE MALatitude__c != null AND MALongitude__c != null AND Creation_Stage__c IN ('In Progress', 'Active')
+    QUERY
+  end
+
+  def ccl_chapters
+    @client.query(<<-QUERY)
+      SELECT Id, Name, City__c, Country__c, Creation_Stage__c, Group_Description__c,
+        Region__c, State__c, State_Province__c, Web_City__c, MALatitude__c, MALongitude__c,
+        Group_Email__c, Web_Chapter_Page__c  
+      FROM Group__c
+      WHERE Creation_Stage__c IN ('In Progress', 'Active')
+    QUERY
+  end
+
   def contacts_eligible_for_zoom
     contacts = @client.query(<<-QUERY)
       SELECT #{SELECT_FIELDS.join(', ')}
