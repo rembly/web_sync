@@ -17,10 +17,13 @@ class SalesforceSync
   INTRO_CALL_RSVP_FIELD = 'Intro_Call_RSVP_Date__c'
   INTRO_CALL_DATE_FIELD = 'Date_of_Intro_Call__c'
   INTRO_CALL_MISSED_FIELD = 'Intro_Call_Missed__c'
+  OCAT_RSVP_FIELD = 'new_Member_Orientation_Reg_Date__c'
+  OCAT_DATE_FIELDS = %w(New_Member_Call_Date__c New_Member_Call_2_Date__c)
   EMAIL_FIELDS = %w(Email Alternate_Email__c CCL_Email_Three__c CCL_Email_Four__c)
   PHONE_FIELDS = %w(Phone HomePhone Mobile_Phone_Formatted2__c)
   REQUIRED_FIELDS = %w(Id FirstName LastName)
-  SELECT_FIELDS = [*REQUIRED_FIELDS, *PHONE_FIELDS, *EMAIL_FIELDS, INTRO_CALL_DATE_FIELD, INTRO_CALL_RSVP_FIELD, INTRO_CALL_MISSED_FIELD]
+  SELECT_FIELDS = [*REQUIRED_FIELDS, *PHONE_FIELDS, *EMAIL_FIELDS, *OCAT_DATE_FIELDS, INTRO_CALL_DATE_FIELD, INTRO_CALL_RSVP_FIELD, 
+                  INTRO_CALL_MISSED_FIELD, OCAT_RSVP_FIELD]
 
   def initialize
     @token = OauthToken.salesforce_token
@@ -97,8 +100,24 @@ class SalesforceSync
   end
 
   def set_intro_date_for_contact(contact:, date:)
-    if contact.present? && (contact.Date_of_Intro_Call__c.blank? || contact.Date_of_Intro_Call__c.to_date < date)
-      contact.Date_of_Intro_Call__c = date.rfc3339
+    set_contact_date(contact: contact, date: date, date_field: INTRO_CALL_DATE_FIELD)
+  end
+
+  def set_ocat_rsvp_for_contact(contact:, date:)
+    set_contact_date(contact: contact, date: date, date_field: OCAT_RSVP_FIELD)
+  end
+
+  def set_ocat_date_for_contact
+    set_contact_date(contact: contact, date: date, date_field: 'New_Member_Call_Date__c')
+    set_contact_date(contact: contact, date: date, date_field: 'New_Member_Call_2_Date__c')
+  end
+
+  # verify that date is absent or in the past and, if so, set it
+  def set_contact_date(contact:, date:, date_field:)
+    if contact.present? && (contact.send(date_field).blank? || contact.send(date_field).to_date < date)
+      contact.send("#{date_field}=", date.rfc3339)
+      p "Date field #{date_field} set to #{date} for #{contact}"
+      LOG.info("Date field #{date_field} set to #{date} for #{contact}")
       #TODO: remove comment on next line to enable zoom to SF sync
       #contact.save
     end

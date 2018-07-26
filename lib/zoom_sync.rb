@@ -21,6 +21,8 @@ class ZoomSync
   CLIMATE_ADVOCACY_WEBINAR_ID = '891518756' # sample webinar
   INTRO_MEETING_ID = '526383982' # sample recurring meeting
   INTRO_WEBINAR_ID = '847350531' # occurance 1519261200000
+  OCAT_WEBINAR_1_ID = '116665200'
+  OCAT_WEBINAR_2_ID = '548719620'
   MINIMUM_DURATION_FOR_INTRO_CALL = 600 # seconds / 10 minutes
 
   # queue for rate_limited api calls
@@ -145,6 +147,20 @@ class ZoomSync
   def climate_advocacy_details; call(endpoint: "webinars/#{CLIMATE_ADVOCACY_WEBINAR_ID}") end
   def climate_advocacy_registrants; call(endpoint: "webinars/#{CLIMATE_ADVOCACY_WEBINAR_ID}/registrants") end
   def climate_advocacy_participants; webinar_participants_report(id: CLIMATE_ADVOCACY_WEBINAR_ID) end
+
+  def next_ocat_1_occurrence; ocat_1_details.dig('occurrences')&.first end
+  def ocat_1_details; call(endpoint: "webinars/#{OCAT_WEBINAR_1_ID}") end
+  def ocat_1_registrants; call(endpoint: "webinars/#{OCAT_WEBINAR_1_ID}/registrants") end
+  def ocat_1_participants; webinar_participants_report(id: OCAT_WEBINAR_1_ID) end
+
+  def next_ocat_2_occurrence; ocat_2_details.dig('occurrences')&.first end
+  def ocat_2_details; call(endpoint: "webinars/#{OCAT_WEBINAR_2_ID}") end
+  def ocat_2_registrants; call(endpoint: "webinars/#{OCAT_WEBINAR_2_ID}/registrants") end
+  def ocat_2_participants; webinar_participants_report(id: OCAT_WEBINAR_2_ID) end
+
+  # get all ocat registrants
+  def ocat_registrants; merge_users(ocat_1_registrants, ocat_2_registrants) end
+  def ocat_participants; merge_users(ocat_1_participants, ocat_2_participants) end
 
   # this will send an invite to the passed in SF user's primary email to join zoom
   def add_sf_user(sf_user)
