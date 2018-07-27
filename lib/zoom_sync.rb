@@ -24,6 +24,7 @@ class ZoomSync
   OCAT_WEBINAR_1_ID = '116665200'
   OCAT_WEBINAR_2_ID = '548719620'
   MINIMUM_DURATION_FOR_INTRO_CALL = 600 # seconds / 10 minutes
+  MINIMUM_DURATION_FOR_OCAT_CALL = 2400 # seconds / 10 minutes
 
   # queue for rate_limited api calls
   attr_reader :call_queue
