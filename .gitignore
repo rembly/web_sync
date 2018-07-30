@@ -30,6 +30,9 @@ google_sheet_sync.json
 !/log/.keep
 /tmp
 
+# VS Code
+.vscode/*
+
 ### Vim template
 # swap
 [._]*.s[a-w][a-z]

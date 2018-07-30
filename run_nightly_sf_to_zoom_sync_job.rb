@@ -9,7 +9,9 @@ LOG.info('Running sync job...')
 p 'Killing push job...'
 `pkill -f salesforce_push_sync`
 begin
-  SalesforceZoomSync.new.run_sf_to_zoom_sync
+  sync = SalesforceZoomSync.new
+  sync.run_sf_to_zoom_sync
+  sync.run_ocat_zoom_to_sf_sync
 rescue Exception => e
   p "Daily SF to Zoom Sync Job Failed: #{e.message}"
   p e.backtrace.inspect
