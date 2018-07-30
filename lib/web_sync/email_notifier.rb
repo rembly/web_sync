@@ -25,9 +25,9 @@ class EmailNotifier
     @deliver_email = EMAIL_CONFIG['deliver_email']
   end
 
-  def send_email(subject:, body:)
+  def send_email(subject:, body:, to: @to)
     if @deliver_email
-      Pony.mail(html_body: body, subject: subject, to: @to, from: @from, via: :smtp, via_options: @options)
+      Pony.mail(html_body: body, subject: subject, to: to || @to, from: @from, via: :smtp, via_options: @options)
     end
     LOG.info("To/From: #{@to}/#{@from}, Subject: #{subject}, Body: #{body}, Options: #{@options}")
   end

@@ -117,7 +117,7 @@ class SalesforceSync
     if contact.present? && (contact.send(date_field).blank? || contact.send(date_field).to_date < date)
       contact.send("#{date_field}=", date.rfc3339)
       p "Date field #{date_field} set to #{date} for #{contact}"
-      LOG.info("Date field #{date_field} set to #{date} for #{contact}")
+      LOG.info("Date field #{date_field} set to #{date} for Contact #{contact.FirstName}")
       #TODO: remove comment on next line to enable zoom to SF sync
       #contact.save
     end

@@ -41,6 +41,15 @@ class SalesforceZoomSync
     wait_for_zoom_queue_thread
   end
 
+  def run_ocat_zoom_to_sf_sync
+    set_logger('nightly_ocat.log')
+    @summary = ["Syncing OCAT Calls to Salesforce for #{Date.today}"]
+    @log.info("Starting nightly sync. Salesforce user: #{ENV['SALESFORCE_USER']}")
+    sync_ocat_updates_to_sf
+    send_summary_email('brett@citizensclimate.org,bryan.hermsen@citizensclimate.org')
+    wait_for_zoom_queue_thread
+  end
+
   def sync_sf_updates_to_zoom
     @log.info('Syncing Salesforce users to Zoom..')
     # get SF users eligible to be added to zoom based on intro call date and rsvp
@@ -59,20 +68,23 @@ class SalesforceZoomSync
   end
 
   def sync_zoom_updates_to_sf
-    # TODO: for debug
-    set_logger('ocat_sync.log')
-    @summary = ["Test OCAT"]
     @log.info('Syncing Zoom updates to SF')
     # get all zoom users who have watched the most recent intro call for more than the minimum duration
-    # sync_intro_call_webinar_users
+    sync_intro_call_webinar_users
+    # sync_ocat_webinar_registrants
+    # sync_ocat_webinar_users
+  end
+
+  def sync_ocat_updates_to_sf
+    @log.info('Syncing OCAT updates to SF')
     sync_ocat_webinar_registrants
     sync_ocat_webinar_users
   end
 
   private
 
-  def send_summary_email
-    EMAIL_NOTIFIER.send_email(subject: summary[0], body: summary.join("\n"))
+  def send_summary_email(to = nil)
+    EMAIL_NOTIFIER.send_email(subject: summary[0], body: summary.join("\n"), to: to)
   end
 
   def sync_intro_call_webinar_users
@@ -94,10 +106,9 @@ class SalesforceZoomSync
   end
 
   def add_ocat_participants(participants, ocat_date)
-    # new_participants = participants.select{|p| p.New_Member_Call_Date__c.blank? || p.New_Member_Call_Date__c.to_date < ocat_date}
     @log.debug("No OCAT call participants to sync for #{ocat_date}") && return unless participants.any?
-    matched_email = update_zoom_attendees(participants, ocat_date, "OCAT #{ocat_date} Participants", 'New_Member_Call_Date__c', true)
-    matched_phone = update_zoom_callers(participants, ocat_date, "OCAT #{ocat_date} Callers", 'New_Member_Call_Date__c', true)
+    matched_email = update_zoom_attendees(participants, ocat_date, "OCAT Participants", 'New_Member_Call_Date__c', true)
+    matched_phone = update_zoom_callers(participants, ocat_date, "OCAT Call-Ins", 'New_Member_Call_Date__c', true)
     log_unmatched_in_sf(matched_email.to_a | matched_phone.to_a, participants, "OCAT #{ocat_date}")
     # log_missed_call(participants, matched_email.to_a | matched_phone.to_a)
   end
@@ -226,8 +237,11 @@ class SalesforceZoomSync
     log("No Zoom users for #{webinar_type} were unmatched") && return if (matched_sf.to_a.none? || zoom_participants.to_a.none?)
 
     zoom_participants.select{|zoom_user| zoom_user_not_in_sf_list(zoom_user, matched_sf)}.
-                      tap{|unmatched| log("<br/>#{unmatched.size} Zoom #{webinar_type} users could not be found in Salesforce:")}.
-                      each{|unmatched_intro_attendee| log(zoom_user_print(unmatched_intro_attendee))}
+                      tap{|unmatched| 
+                        if unmatched.size > 0
+                          log("<br/>#{unmatched.size} Zoom #{webinar_type} users could not be found in Salesforce:") 
+                        end
+                      }.each{|unmatched_intro_attendee| log(zoom_user_print(unmatched_intro_attendee))}
   end
 
   def zoom_user_not_in_sf_list(zoom_user, sf_list)
