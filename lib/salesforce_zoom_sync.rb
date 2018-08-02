@@ -122,8 +122,8 @@ class SalesforceZoomSync
     ocat_1 = @zoom_client.ocat_1_registrants.dig('registrants').select(&method(:valid_zoom_user_for_sf?))
     ocat_2 = @zoom_client.ocat_2_registrants.dig('registrants').select(&method(:valid_zoom_user_for_sf?))
     @log.debug("#{ocat_1&.size.to_i} registrants for OCAT #{next_ocat_1} and #{ocat_2&.size.to_i} registrants for OCAT #{next_ocat_2}")
-    matched_1 = update_zoom_attendees(ocat_1, next_ocat_1, "OCAT Registrants", SalesforceSync::OCAT_RSVP_FIELD)
-    matched_2 = update_zoom_attendees(ocat_2, next_ocat_2, "OCAT Registrants", SalesforceSync::OCAT_RSVP_FIELD)
+    matched_1 = update_zoom_attendees(ocat_1, next_ocat_1, "OCAT Registrants", SalesforceSync::OCAT_RSVP_FIELD, true)
+    matched_2 = update_zoom_attendees(ocat_2, next_ocat_2, "OCAT Registrants", SalesforceSync::OCAT_RSVP_FIELD, true)
     log_unmatched_in_sf(matched_1.to_a, ocat_1, "OCAT #{next_ocat_1} RSVP")
     log_unmatched_in_sf(matched_2.to_a, ocat_2, "OCAT #{next_ocat_2} RSVP")
   end
