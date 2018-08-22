@@ -18,3 +18,4 @@ gem 'faye', '~> 1.2', '>= 1.2.4'
 gem 'pry', '~> 0.10.4'
 gem 'pony', '~> 1.12'
 gem 'google-api-client', '~> 0.8'
+gem 'rubocop', '~> 0.56.0', require: false
