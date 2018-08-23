@@ -1,2 +1,3 @@
 Style/Tab:
   Enabled: false
+  # IndentationWidth: 3
