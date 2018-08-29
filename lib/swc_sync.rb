@@ -4,6 +4,7 @@ require 'rest-client'
 require 'json'
 require 'active_support/all'
 require_relative 'web_sync/json_web_token'
+require_relative 'web_sync/mysql_connection'
 require_relative './zoom_sync'
 require_relative 'salesforce_sync'
 require 'csv'
@@ -20,6 +21,7 @@ class SwcSync
   API_URL = 'http://cclobby.smallworldlabs.com/services/4.0/'
   FILES_PATH = ENV['BUDDY_FILE_PATH']
   CHAPTER_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', 'data', 'chapter_import.json')
+  ACTION_TEAM_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', 'data', 'action_team_import.json')
   BUDDY_FILES_CSV = File.join(File.dirname(__FILE__), '..', 'data', 'buddy_drive_files.csv')
   DRIVE_COLUMNS = %i[id email path title description mime_type].freeze
   DEFAULT_CATEGORY = '1'
@@ -32,6 +34,7 @@ class SwcSync
   GROUP_NEWS_TEXT = "Most chapters meet monthly on or near the second Saturday of the month. Contact %s to get details on this chapter's meeting schedule."
   GROUP_CHAPTER_CATEGORY = 4
   GROUP_DEFAULT_OWNER = 1
+  ACTION_TEAM_CATEGORY = 5
 
   # queue for rate_limited api calls
   attr_reader :call_queue
@@ -40,12 +43,14 @@ class SwcSync
   attr_accessor :swc_token
   attr_accessor :users
   attr_accessor :sf
+  attr_accessor :wp_client
 
   def initialize
     @swc_token = JsonWebToken.swc_token
     @call_queue = Queue.new
     @queue_consumer = start_request_queue_consumer
     @sf = SalesforceSync.new
+    @wp_client = MysqlConnection.get_connection
   end
 
   def get_users
@@ -65,17 +70,21 @@ class SwcSync
   def build_ccl_chapter_import
     # selects active and in-progress chapters. TODO
     chapters = sf.ccl_chapters
-    import_string = chapters.collect(&method(:get_chapter_row))
-    p import_string
+    import_string = chapters.collect(&method(:get_chapter_json_from_sf))
     File.open(CHAPTER_FILE_LOCATION, 'w') { |f| f.puts(import_string.to_json) }
+  end
+
+  def build_action_team_import
+    action_teams = wp_client.query('SELECT * FROM wp_bp_groups WHERE parent_id = 283')
+    import_string = action_teams.collect(&method(:get_chapter_json_from_sql))
+    File.open(ACTION_TEAM_FILE_LOCATION, 'w') { |f| f.puts(import_string.to_json) }
   end
 
   # this would be csv import
   # %w[o_group_id *_name *_description *_category_id *_owner_user_id o_access_level o_address o_invite_message o_welcome_message o_news o_content_forums o_content_invite o_content_events o_content_photos o_content_videos o_content_files o_content_members o_content_blogs o_photo_location].freeze
   # 'o_address': { 'line1': '', 'line2': '', 'city': ch.City__c, 'state': ch.State__c, 'zip': '',
   #                'country': !ch.Country__c.nil? ? ch.Country__c : 'USA' },
-  def get_chapter_row(ch)
-    # TODO: country
+  def get_chapter_json_from_sf(ch)
     { '*_name': ch.Name, '*_description': GROUP_DESCRIPTION_TEXT % ch.Name, '*_category_id': GROUP_CHAPTER_CATEGORY,
       '*_owner_user_id': GROUP_DEFAULT_OWNER, 'o_access_level': ch.Creation_Stage__c == 'In-Active' ? '3' : '1',
       'o_address': ",,#{ch.City__c}, #{ch.State__c},, #{!ch.Country__c.nil? ? ch.Country__c : 'USA'}",
@@ -84,21 +93,13 @@ class SwcSync
       'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '2' }
   end
 
-  def get_chapter_object(ch)
-    {
-      'name': ch.Name, 'description': GROUP_DESCRIPTION_TEXT % ch.Name, 'categoryId': GROUP_CHAPTER_CATEGORY,
-      'ownerId': GROUP_DEFAULT_OWNER, 'access': ch.Creation_Stage__c == 'In-Active' ? '3' : '1',
-      'address': { 'line1': '', 'line2': '', 'city': ch.City__c, 'state': ch.State__c, 'zip': '',
-                   'country': !ch.Country__c.nil? ? ch.Country__c : 'USA' },
-      'news': GROUP_NEWS_TEXT % (ch.Group_Email__c || 'chapter@ccl.org'),
-      'o_content_forums': '1', 'o_content_invite': '2', 'o_content_events': '0', 'o_content_photos': '2',
-      'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '2'
-    }
-   end
-
-  # https://docs.google.com/document/d/1I56rG3YB_618RCeip_9sY5u5JiFagdY1JBhEvcbWhLk/edit
-  # description = about_us copy from above
-  # news = default chapter news - insert chapter email address
+  def get_chapter_json_from_sql(grp)
+    { '*_name': grp['name'], '*_description': grp['description'].present? ? grp['description'] : grp['name'],
+      '*_category_id': ACTION_TEAM_CATEGORY, '*_owner_user_id': GROUP_DEFAULT_OWNER,
+      'o_access_level': grp['status'] == 'public' ? '1' : '2',
+      'o_content_forums': grp['enable_forum'] ? '1' : '0', 'o_content_invite': '2', 'o_content_events': '0', 'o_content_photos': '1',
+      'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '2' }
+  end
 
   def upload_files
     CSV.foreach(BUDDY_FILES_CSV) { |row| upload_file(row[1], row[2], row[3], row[4]) }
