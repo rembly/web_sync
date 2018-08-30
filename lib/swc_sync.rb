@@ -23,6 +23,7 @@ class SwcSync
   CHAPTER_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', 'data', 'chapter_import.json')
   ACTION_TEAM_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', 'data', 'action_team_import.json')
   BUDDY_FILES_CSV = File.join(File.dirname(__FILE__), '..', 'data', 'buddy_drive_files.csv')
+  ACTION_TEAM_MEMBERS = File.join(File.dirname(__FILE__), '..', 'data', 'action_team_members.json')
   DRIVE_COLUMNS = %i[id email path title description mime_type].freeze
   DEFAULT_CATEGORY = '1'
   SWC_CONTACT_FIELDS = %w[Email FirstName LastName Region__c Group_del__c SWC_Create_User__c SWC_Chapter_Status__c SWC_User_ID__c SWC_Regional_Coordinator__c SWC_Staff__c SWC_State_Coordinator__c SWC_Liaison__c SWC_Group_Leader__c Country_Full_Name__c Group_del__r.SWC_Group_ID__c Group_Leader_del__c].freeze
@@ -57,11 +58,11 @@ class SwcSync
     @users.present? ? @users : @users = call(endpoint: 'users')
   end
 
-  def get_sf_contacts(_where)
+  def get_sf_contacts
+    # WHERE LastName = 'Hermsen' AND Is_CCL_Supporter__c = True
     contacts = @sf.client.query(<<-QUERY)
       SELECT #{SWC_CONTACT_FIELDS.join(', ')}
       FROM Contact
-      WHERE LastName = 'Hermsen' AND Is_CCL_Supporter__c = True
     QUERY
   end
 
@@ -80,10 +81,56 @@ class SwcSync
     File.open(ACTION_TEAM_FILE_LOCATION, 'w') { |f| f.puts(import_string.to_json) }
   end
 
-  # this would be csv import
-  # %w[o_group_id *_name *_description *_category_id *_owner_user_id o_access_level o_address o_invite_message o_welcome_message o_news o_content_forums o_content_invite o_content_events o_content_photos o_content_videos o_content_files o_content_members o_content_blogs o_photo_location].freeze
-  # 'o_address': { 'line1': '', 'line2': '', 'city': ch.City__c, 'state': ch.State__c, 'zip': '',
-  #                'country': !ch.Country__c.nil? ? ch.Country__c : 'USA' },
+  def action_team_members
+    wp_client.query(<<-QUERY)
+      SELECT u.id, u.user_login, u.user_nicename, u.user_email, g.name group_name
+      FROM wp_bp_groups g
+        JOIN wp_bp_groups_members gm ON g.id = gm.group_id
+        JOIN wp_users u ON u.id = gm.user_id
+      WHERE parent_id = 283
+    QUERY
+  end
+
+  # after initial import of groups via import tool, set the SWC ID in SF
+  # TODO: we could build a CSV for mass update depending on API call limit..
+  def set_group_id_in_sf
+    sw_groups = call(endpoint: 'groups')
+    by_name = sw_groups.group_by { |grp| grp['name'] }
+    sf.ccl_chapters(%w[Id Name SWC_Group_ID__c]).each do |ch|
+      if by_name.key?(CGI.escape(ch.Name)) && ch.SWC_Group_ID__c.blank?
+        ch.SWC_Group_ID__c = by_name[CGI.escape(ch.Name)].first['id'].to_i
+        ch.save
+      else
+        LOG.info("Group from SF not found in SWC: #{ch}")
+      end
+    end
+  end
+
+  # TODO: could also be done via Import Tool
+  def set_action_team_members
+    action_members = action_team_members
+    swc_action_teams = call(endpoint: 'groups', params: { categoryId: ACTION_TEAM_CATEGORY })
+    team_names = swc_action_teams.each_with_object({}) { |team, map| map[team['name']] = team['id']; }
+    sf_community_users = sf.client.query("SELECT Id, FirstName, LastName, Email, SWC_User_ID__c, CCL_Community_Username__c FROM Contact WHERE CCL_Community_Username__c <> ''")
+    # user_logins = sf_community_users.map(&:CCL_Community_Username__c)
+    # user_logins = sf_community_users.inject({}){ |map, user| map[user.CCL_Community_Username__c] = user.SWC_User_ID__c; map }
+    user_logins = sf_community_users.each_with_object({}) { |user, map| map[user.CCL_Community_Username__c] = user; }
+    # sw_users = sc.call(endpoint: 'users', params: {'fields': 'userId, emailAddress, username, firstName, lastName'})
+    # sw_user_map = sw_users.inject({}){|map, user| map[user['userId'].to_i] = user; map}
+
+    update = action_members.each_with_object([]) do |member, updates|
+      # can we find them in SF, can we find the action team SW ID? do they have a SW ID in SF?
+      username = member['user_login']
+      action_team = CGI.escape(member['group_name'])
+      next unless user_logins.include?(username) && team_names.key?(action_team)
+      sf_user = user_logins[username]
+      updates << { '*_email_address': sf_user.Email.gsub('+', '%2B'), '*_username': sf_user.FirstName + '_' + sf_user.LastName,
+                   '*_first_name': sf_user.FirstName, '*_last_name': sf_user.LastName, 'o_groups': team_names[action_team] }
+    end
+    # can do multiple of the same user
+    File.open(ACTION_TEAM_MEMBERS, 'w') { |f| f.puts(update.to_json) }
+  end
+
   def get_chapter_json_from_sf(ch)
     { '*_name': ch.Name, '*_description': GROUP_DESCRIPTION_TEXT % ch.Name, '*_category_id': GROUP_CHAPTER_CATEGORY,
       '*_owner_user_id': GROUP_DEFAULT_OWNER, 'o_access_level': ch.Creation_Stage__c == 'In-Active' ? '3' : '1',
@@ -97,7 +144,7 @@ class SwcSync
     { '*_name': grp['name'], '*_description': grp['description'].present? ? grp['description'] : grp['name'],
       '*_category_id': ACTION_TEAM_CATEGORY, '*_owner_user_id': GROUP_DEFAULT_OWNER,
       'o_access_level': grp['status'] == 'public' ? '1' : '2',
-      'o_content_forums': grp['enable_forum'] ? '1' : '0', 'o_content_invite': '2', 'o_content_events': '0', 'o_content_photos': '1',
+      'o_content_forums': '1', 'o_content_invite': '2', 'o_content_events': '0', 'o_content_photos': '1',
       'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '2' }
   end
 
@@ -110,13 +157,9 @@ class SwcSync
     if id.present?
       filename = File.basename(URI.parse(url)&.path)
       file = File.new(File.join(FILES_PATH, filename), 'rb')
-      # LOG.info("User/File found for #{email} / #{filename}")
       begin
         RestClient.post(URI.join(API_URL, 'files').to_s, { file: file, title: title, description: description,
-                                                           public: false, userId: id,
-                                                           categoryId: DEFAULT_CATEGORY },
-                        Authorization: "Bearer #{swc_token}")
-      #   LOG.info("User/File uploaded #{email} / #{filename}")
+                                                           public: false, userId: id, categoryId: DEFAULT_CATEGORY }, Authorization: "Bearer #{swc_token}")
       rescue RestClient::ExceptionWithResponse => e
         return handle_response(e.response)
       end

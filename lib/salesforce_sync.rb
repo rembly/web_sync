@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'restforce'
 require 'json'
 require 'active_support/all'
@@ -18,12 +20,14 @@ class SalesforceSync
   INTRO_CALL_DATE_FIELD = 'Date_of_Intro_Call__c'
   INTRO_CALL_MISSED_FIELD = 'Intro_Call_Missed__c'
   OCAT_RSVP_FIELD = 'new_Member_Orientation_Reg_Date__c'
-  OCAT_DATE_FIELDS = %w(New_Member_Call_Date__c New_Member_Call_2_Date__c)
-  EMAIL_FIELDS = %w(Email Alternate_Email__c CCL_Email_Three__c CCL_Email_Four__c)
-  PHONE_FIELDS = %w(Phone HomePhone Mobile_Phone_Formatted2__c)
-  REQUIRED_FIELDS = %w(Id FirstName LastName)
-  SELECT_FIELDS = [*REQUIRED_FIELDS, *PHONE_FIELDS, *EMAIL_FIELDS, *OCAT_DATE_FIELDS, INTRO_CALL_DATE_FIELD, INTRO_CALL_RSVP_FIELD, 
-                  INTRO_CALL_MISSED_FIELD, OCAT_RSVP_FIELD]
+  OCAT_DATE_FIELDS = %w[New_Member_Call_Date__c New_Member_Call_2_Date__c].freeze
+  EMAIL_FIELDS = %w[Email Alternate_Email__c CCL_Email_Three__c CCL_Email_Four__c].freeze
+  PHONE_FIELDS = %w[Phone HomePhone Mobile_Phone_Formatted2__c].freeze
+  REQUIRED_FIELDS = %w[Id FirstName LastName].freeze
+  SELECT_FIELDS = [*REQUIRED_FIELDS, *PHONE_FIELDS, *EMAIL_FIELDS, *OCAT_DATE_FIELDS, INTRO_CALL_DATE_FIELD, INTRO_CALL_RSVP_FIELD,
+                   INTRO_CALL_MISSED_FIELD, OCAT_RSVP_FIELD].freeze
+  DEFAULT_CHAPTER_FIELDS = %w[Id Name City__c Country__c Creation_Stage__c Group_Description__c
+                              Region__c State__c State_Province__c Web_City__c MALatitude__c MALongitude__c Group_Email__c Web_Chapter_Page__c].freeze
 
   def initialize
     @token = OauthToken.salesforce_token
@@ -31,24 +35,20 @@ class SalesforceSync
   end
 
   def all_contacts
-    @client.query("SELECT Id, FirstName, LastName, Birthdate, Email, Intro_Call_RSVP_Date__c FROM Contact")
+    @client.query('SELECT Id, FirstName, LastName, Birthdate, Email, Intro_Call_RSVP_Date__c FROM Contact')
   end
 
-  def ccl_chapter_locations
+  def ccl_chapter_locations(fields = DEFAULT_CHAPTER_FIELDS)
     @client.query(<<-QUERY)
-      SELECT Id, Name, City__c, Country__c, Creation_Stage__c, Group_Description__c,
-        Region__c, State__c, State_Province__c, Web_City__c, MALatitude__c, MALongitude__c,
-        Group_Email__c, Web_Chapter_Page__c  
+      SELECT #{fields.join(', ')}
       FROM Group__c
       WHERE MALatitude__c != null AND MALongitude__c != null AND Creation_Stage__c IN ('In Progress', 'Active')
     QUERY
   end
 
-  def ccl_chapters
+  def ccl_chapters(fields = DEFAULT_CHAPTER_FIELDS)
     @client.query(<<-QUERY)
-      SELECT Id, Name, City__c, Country__c, Creation_Stage__c, Group_Description__c,
-        Region__c, State__c, State_Province__c, Web_City__c, MALatitude__c, MALongitude__c,
-        Group_Email__c, Web_Chapter_Page__c  
+      SELECT #{fields.join(', ')}
       FROM Group__c
       WHERE Creation_Stage__c IN ('In Progress', 'Active')
     QUERY
@@ -69,7 +69,7 @@ class SalesforceSync
   end
 
   def sf_users_for_zoom_emails(zoom_users)
-    email_list = zoom_users.map{|zoom_user| zoom_user.dig('user_email') || zoom_user.dig('email')}.compact.delete_if(&:empty?)
+    email_list = zoom_users.map { |zoom_user| zoom_user.dig('user_email') || zoom_user.dig('email') }.compact.delete_if(&:empty?)
 
     matched_contacts = email_list.each_slice(30).reduce([]) do |matched, emails|
       matched |= @client.query(<<-QUERY).to_a if email_list.any?
@@ -86,8 +86,10 @@ class SalesforceSync
 
   # Look up SF users by phone number
   def sf_users_for_zoom_callers(zoom_callers)
-    phone_list = zoom_callers.select{|zu| SalesforceSync.
-      phone_participant?(zu)}.map{|zu| zu.dig('name')}.compact.delete_if(&:empty?)
+    phone_list = zoom_callers.select do |zu|
+                   SalesforceSync
+                     .phone_participant?(zu)
+                 end .map { |zu| zu.dig('name') }.compact.delete_if(&:empty?)
 
     matched_by_phone = @client.search(<<-QUERY) if phone_list.any?
       FIND {#{phone_list.join(' OR ')}}
@@ -118,14 +120,14 @@ class SalesforceSync
       contact.send("#{date_field}=", date.rfc3339)
       p "Date field #{date_field} set to #{date} for #{contact}"
       LOG.info("Date field #{date_field} set to #{date} for Contact #{contact.FirstName}")
-      #TODO: remove comment on next line to enable zoom to SF sync
-      #contact.save
+      # TODO: remove comment on next line to enable zoom to SF sync
+      # contact.save
     end
   end
 
   def set_intro_call_missed(contact:)
     contact.Intro_Call_Missed__c = true
-    #TODO: remove comment for live updates of intro call missed flag
+    # TODO: remove comment for live updates of intro call missed flag
     # contact.save
   end
 
@@ -149,20 +151,20 @@ class SalesforceSync
   end
 
   def self.user_has_email_address?(sf_user)
-    EMAIL_FIELDS.map(&:to_sym).any?{|email_field| sf_user.try(email_field).present?}
+    EMAIL_FIELDS.map(&:to_sym).any? { |email_field| sf_user.try(email_field).present? }
   end
 
   def self.all_emails_for_user(sf_user)
-    EMAIL_FIELDS.map(&:to_sym).collect{|email_field| sf_user.try(email_field)}.compact.delete_if(&:empty?)
+    EMAIL_FIELDS.map(&:to_sym).collect { |email_field| sf_user.try(email_field) }.compact.delete_if(&:empty?)
   end
 
   def self.all_phone_numbers_for_user(sf_user)
-    EMAIL_FIELDS.map(&:to_sym).collect{|phone_field| sf_user.try(phone_field)}.compact.delete_if(&:empty?)
+    EMAIL_FIELDS.map(&:to_sym).collect { |phone_field| sf_user.try(phone_field) }.compact.delete_if(&:empty?)
   end
 
   # move from Email to CCL Email 4 picking the first one
   def self.primary_email(sf_user)
-    self.all_emails_for_user(sf_user).try(:first)
+    all_emails_for_user(sf_user).try(:first)
   end
 
   # create user object from push message
@@ -177,22 +179,22 @@ class SalesforceSync
   private
 
   def quoted_email_list(email_list)
-    quoted_list = email_list.collect{|email| "'#{email}'"}.join(', ')
-    EMAIL_FIELDS.collect{|field_name| "#{field_name} IN (#{quoted_list})"}.join(' OR ')
+    quoted_list = email_list.collect { |email| "'#{email}'" }.join(', ')
+    EMAIL_FIELDS.collect { |field_name| "#{field_name} IN (#{quoted_list})" }.join(' OR ')
   end
 
   # returning US-formatted numbers
   def quoted_phone_list(phone_list)
-    quoted_list = phone_list.collect{|number| "'#{formatted_phone_number(number)}'"}.join(', ')
-    PHONE_FIELDS.collect{|field_name| "#{field_name} IN (#{quoted_list})"}.join(' OR ')
+    quoted_list = phone_list.collect { |number| "'#{formatted_phone_number(number)}'" }.join(', ')
+    PHONE_FIELDS.collect { |field_name| "#{field_name} IN (#{quoted_list})" }.join(' OR ')
   end
 
   def one_field_present_for(fields)
-    fields.collect{|field_name| "#{field_name} != null"}.join(' OR ')
+    fields.collect { |field_name| "#{field_name} != null" }.join(' OR ')
   end
 
   def all_fields_present_for(fields)
-    fields.collect{|field_name| "#{field_name} != null"}.join(' AND ')
+    fields.collect { |field_name| "#{field_name} != null" }.join(' AND ')
   end
 
   # Create formatted phone number from Zoom number. TODO: this is only handling US numbers at this point
@@ -201,8 +203,7 @@ class SalesforceSync
   end
 
   def initialize_client(token)
-    # todo: sandbox host is for dev only
+    # TODO: sandbox host is for dev only
     Restforce.new(oauth_token: token['access_token'], instance_url: token['instance_url'], api_version: API_VERSION, host: SALESFORCE_HOST)
   end
-
 end
