@@ -25,6 +25,8 @@ class SwcSync
   ACTION_TEAM_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', 'data', 'action_team_import.json')
   BUDDY_FILES_CSV = File.join(File.dirname(__FILE__), '..', 'data', 'buddy_drive_files.csv')
   ACTION_TEAM_MEMBERS = File.join(File.dirname(__FILE__), '..', 'data', 'action_team_members.json')
+  SWC_GROUPS = File.join(File.dirname(__FILE__), '..', 'data', 'swc_groups.json')
+  SWC_GROUP_OWNERS = File.join(File.dirname(__FILE__), '..', 'data', 'swc_groups_owners.json')
   DRIVE_COLUMNS = %i[id email path title description mime_type].freeze
   DEFAULT_CATEGORY = '1'
   SWC_CONTACT_FIELDS = %w[Email FirstName LastName Region__c Group_del__c SWC_Create_User__c SWC_Chapter_Status__c SWC_User_ID__c SWC_Regional_Coordinator__c SWC_Staff__c SWC_State_Coordinator__c SWC_Liaison__c SWC_Group_Leader__c Country_Full_Name__c Group_del__r.SWC_Group_ID__c Group_Leader_del__c].freeze
@@ -66,8 +68,6 @@ class SwcSync
       FROM Contact
     QUERY
   end
-
-  def build_ccl_member_import(query); end
 
   def build_ccl_chapter_import
     # selects active and in-progress chapters. TODO
@@ -125,6 +125,35 @@ class SwcSync
     end
     # can do multiple of the same user
     File.open(ACTION_TEAM_MEMBERS, 'w') { |f| f.puts(update.to_json) }
+  end
+
+  def build_group_owner_import
+    # get all chapter leaders with associated SWC chapter ID
+    leaders_by_group = group_leaders_by_group_id
+    # get all swc groups with system user as owner
+    swc_groups = call(endpoint: 'groups')
+    # go ahead and save off latest group list
+    File.open(SWC_GROUPS, 'w') { |f| f.puts swc_groups.to_json }
+    # build json file that sets the chapter leader as the group owner
+    updates = []
+    swc_groups.select { |g| g['ownerId'] == GROUP_DEFAULT_OWNER.to_s }.each do |group|
+      if leaders_by_group.key?(group['id'])
+        updates << { 'o_group_id': group['id'], '*_name': group['name'], '*_description': group['description'],
+                     '*_category_id': group['categoryId'], '*_owner_user_id': leaders_by_group[group['id']].SWC_User_ID__c.to_i.to_s }
+      end
+    end
+    File.open(SWC_GROUP_OWNERS, 'w') { |f| f.puts(updates.to_json) }
+  end
+
+  def group_leaders_by_group_id
+    group_leaders = sf.client.query("SELECT Email, FirstName, LastName, Group_Leader_del__c, SWC_User_ID__c, Group_del__r.SWC_Group_ID__c
+      FROM Contact WHERE Group_Leader_del__c = True AND SWC_User_ID__c <> null AND Group_del__r.SWC_Group_ID__c <> null")
+
+    leaders_by_group = group_leaders.each_with_object({}) do |leader, map|
+      if leader&.Group_del__r&.SWC_Group_ID__c.present? && leader.SWC_User_ID__c.present?
+        map[leader.Group_del__r.SWC_Group_ID__c.to_i.to_s] = leader
+      end
+    end
   end
 
   def get_chapter_json_from_sf(ch)
