@@ -18,6 +18,7 @@ class SwcSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'swc.log'))
   HALT_CALL_QUEUE_SIGNAL = :stop
   MAX_CALLS_PER_SECOND = 1.5 # 1 second limit plus buffer
+  TIME_BETWEEN_CALLS = 0.6
   API_URL = 'http://cclobby.smallworldlabs.com/services/4.0/'
   FILES_PATH = ENV['BUDDY_FILE_PATH']
   CHAPTER_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', 'data', 'chapter_import.json')
@@ -106,17 +107,12 @@ class SwcSync
     end
   end
 
-  # TODO: could also be done via Import Tool
   def set_action_team_members
     action_members = action_team_members
     swc_action_teams = call(endpoint: 'groups', params: { categoryId: ACTION_TEAM_CATEGORY })
     team_names = swc_action_teams.each_with_object({}) { |team, map| map[team['name']] = team['id']; }
     sf_community_users = sf.client.query("SELECT Id, FirstName, LastName, Email, SWC_User_ID__c, CCL_Community_Username__c FROM Contact WHERE CCL_Community_Username__c <> ''")
-    # user_logins = sf_community_users.map(&:CCL_Community_Username__c)
-    # user_logins = sf_community_users.inject({}){ |map, user| map[user.CCL_Community_Username__c] = user.SWC_User_ID__c; map }
     user_logins = sf_community_users.each_with_object({}) { |user, map| map[user.CCL_Community_Username__c] = user; }
-    # sw_users = sc.call(endpoint: 'users', params: {'fields': 'userId, emailAddress, username, firstName, lastName'})
-    # sw_user_map = sw_users.inject({}){|map, user| map[user['userId'].to_i] = user; map}
 
     update = action_members.each_with_object([]) do |member, updates|
       # can we find them in SF, can we find the action team SW ID? do they have a SW ID in SF?
@@ -210,15 +206,33 @@ class SwcSync
   def handle_response(response)
     return if response.blank?
     @last_response = response
-
     if success_response?(response)
-      return JSON.parse(response)
+      results = JSON.parse(response)
+      return gather_pages?(response) ? merge_results(results, get_next_page(response)) : results
     else
       # TODO: potentially handle rate limit
       LOG.error("FAILED request #{response.request}: MESSAGE: #{JSON.parse(response)}")
       return JSON.parse(response)
     end
    end
+
+  # gather pages if there is a next_page token and the result set contains participants
+  def gather_pages?(response)
+    response.headers.key?(:link)
+  end
+
+  # get next page by re-sending same request but with next page token. This will block for max api call rate duration
+  def get_next_page(response)
+    next_page_url = response.headers[:link].match(/^<([^>]*)>; rel=\"next/)
+    request_uri = URI.parse(next_page_url.captures.first)
+    endpoint = [request_uri.path.split('/').last, request_uri.query].join('?')
+    sleep TIME_BETWEEN_CALLS
+    call(endpoint: endpoint)
+  end
+
+  def merge_results(r1, r2)
+    r1.concat(r2)
+  end
 
   # all 200 responses indicate a success
   def success_response?(response)
