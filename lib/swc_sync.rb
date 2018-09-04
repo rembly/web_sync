@@ -79,13 +79,20 @@ class SwcSync
 
   def build_action_team_import
     action_teams = wp_client.query('SELECT * FROM wp_bp_groups WHERE parent_id = 283')
-    import_string = action_teams.collect(&method(:get_chapter_json_from_sql))
+    sf_community_users = sf.client.query("SELECT Id, FirstName, LastName, Email, SWC_User_ID__c, CCL_Community_Username__c FROM Contact WHERE CCL_Community_Username__c <> '' AND SWC_User_ID__c <> null")
+    user_logins = sf_community_users.each_with_object({}) { |user, map| map[user.CCL_Community_Username__c] = user; }
+    # select admins where we can get their SWC ID from SF
+    admins = action_team_members.to_a.select { |u| u['user_title'] == 'Group Admin' && user_logins.key?(u['user_login']) }
+                                .map { |u| u['swc_id'] = user_logins[u['user_login']].SWC_User_ID__c.to_i.to_s; u }
+                                .group_by { |u| u['group_name'] }
+
+    import_string = action_teams.collect { |team| get_chapter_json_from_sql(team, admins) }
     File.open(ACTION_TEAM_FILE_LOCATION, 'w') { |f| f.puts(import_string.to_json) }
   end
 
   def action_team_members
     wp_client.query(<<-QUERY)
-      SELECT u.id, u.user_login, u.user_nicename, u.user_email, g.name group_name
+      SELECT u.id, u.user_login, u.user_nicename, u.user_email, g.name group_name, gm.user_title
       FROM wp_bp_groups g
         JOIN wp_bp_groups_members gm ON g.id = gm.group_id
         JOIN wp_users u ON u.id = gm.user_id
@@ -153,9 +160,11 @@ class SwcSync
       'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '2' }
   end
 
-  def get_chapter_json_from_sql(grp)
+  def get_chapter_json_from_sql(grp, admins)
+    owner = admins.key?(grp['name']) ? admins[grp['name']].first['swc_id'] : GROUP_DEFAULT_OWNER
+
     { '*_name': grp['name'], '*_description': grp['description'].present? ? grp['description'] : grp['name'],
-      '*_category_id': ACTION_TEAM_CATEGORY, '*_owner_user_id': GROUP_DEFAULT_OWNER,
+      '*_category_id': ACTION_TEAM_CATEGORY, '*_owner_user_id': owner,
       'o_access_level': grp['status'] == 'public' ? '1' : '2',
       'o_content_forums': '1', 'o_content_invite': '2', 'o_content_events': '0', 'o_content_photos': '1',
       'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '2' }
