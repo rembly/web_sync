@@ -70,7 +70,7 @@ class SwcSync
   end
 
   def build_ccl_chapter_import
-    # selects active and in-progress chapters. TODO
+    # selects active and in-progress chapters.
     chapters = sf.ccl_chapters
     leaders = group_leaders_by_group_id
     import_string = chapters.collect { |ch| get_chapter_json_from_sf(ch, leaders) }
@@ -79,14 +79,9 @@ class SwcSync
 
   def build_action_team_import
     action_teams = wp_client.query('SELECT * FROM wp_bp_groups WHERE parent_id = 283')
-    sf_community_users = sf.client.query("SELECT Id, FirstName, LastName, Email, SWC_User_ID__c, CCL_Community_Username__c FROM Contact WHERE CCL_Community_Username__c <> '' AND SWC_User_ID__c <> null")
-    user_logins = sf_community_users.each_with_object({}) { |user, map| map[user.CCL_Community_Username__c] = user; }
-    # select admins where we can get their SWC ID from SF
-    admins = action_team_members.to_a.select { |u| u['user_title'] == 'Group Admin' && user_logins.key?(u['user_login']) }
-                                .map { |u| u['swc_id'] = user_logins[u['user_login']].SWC_User_ID__c.to_i.to_s; u }
-                                .group_by { |u| u['group_name'] }
-
-    import_string = action_teams.collect { |team| get_chapter_json_from_sql(team, admins) }
+    action_teams_by_name = action_teams.to_a.each_with_object({}) { |team, map| map[team['name']] = team }
+    sf_action_teams = sf.client.query('SELECT Name, Inactive__c, Leader_1__c, Leader_2__c, Leader_1__r.SWC_User_ID__c, Leader_2__r.SWC_User_ID__c FROM Action_Team__c WHERE Inactive__c = false')
+    import_string = sf_action_teams.collect { |sf_team| get_action_team_json(sf_team, action_teams_by_name[sf_team.Name]) }
     File.open(ACTION_TEAM_FILE_LOCATION, 'w') { |f| f.puts(import_string.to_json) }
   end
 
@@ -138,8 +133,7 @@ class SwcSync
   # map of group ID to ONE group leader
   def group_leaders_by_group_id
     group_leaders = sf.client.query("SELECT Id, Email, FirstName, LastName, Group_Leader_del__c, SWC_User_ID__c, Group_del__r.SWC_Group_ID__c,
-      Group_del__c FROM Contact WHERE Group_Leader_del__c = True AND SWC_User_ID__c <> null AND Group_del__c <> null")
-    # Group_del__c FROM Contact WHERE Group_Leader_del__c = True AND SWC_User_ID__c <> null AND Group_del__c <> null AND Group_del__r.SWC_Group_ID__c = null")
+      Group_del__c FROM Contact WHERE Group_Leader_del__c = True AND SWC_User_ID__c <> null AND Group_del__c <> null AND Group_del__r.SWC_Group_ID__c = null")
 
     leaders_by_group = group_leaders.each_with_object({}) do |leader, map|
       if leader&.Group_del__c.present? && leader.SWC_User_ID__c.present?
@@ -160,12 +154,13 @@ class SwcSync
       'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '2' }
   end
 
-  def get_chapter_json_from_sql(grp, admins)
-    owner = admins.key?(grp['name']) ? admins[grp['name']].first['swc_id'] : GROUP_DEFAULT_OWNER
+  def get_action_team_json(sf_team, wp_action_team)
+    wp_action_team ||= {}
+    owner = sf_team&.Leader_1__r&.SWC_User_ID__c || sf_team&.Leader_2__r&.SWC_User_ID__c || GROUP_DEFAULT_OWNER
+    status = wp_action_team && wp_action_team.dig('status') == 'private' ? '2' : '1'
 
-    { '*_name': grp['name'], '*_description': grp['description'].present? ? grp['description'] : grp['name'],
-      '*_category_id': ACTION_TEAM_CATEGORY, '*_owner_user_id': owner,
-      'o_access_level': grp['status'] == 'public' ? '1' : '2',
+    { '*_name': sf_team.Name, '*_description': wp_action_team.dig('description') || sf_team.Name,
+      '*_category_id': ACTION_TEAM_CATEGORY, '*_owner_user_id': owner.to_i.to_s, 'o_access_level': status,
       'o_content_forums': '1', 'o_content_invite': '2', 'o_content_events': '0', 'o_content_photos': '1',
       'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '2' }
   end
@@ -194,13 +189,10 @@ class SwcSync
 
   # NOTE: unable to set group owner via import tool at this time
   def build_group_owner_import
-    # get all chapter leaders with associated SWC chapter ID
     leaders_by_group = group_leaders_by_group_id
     # get all swc groups with system user as owner
     swc_groups = call(endpoint: 'groups')
-    # go ahead and save off latest group list
-    File.open(SWC_GROUPS, 'w') { |f| f.puts swc_groups.to_json }
-    # build json file that sets the chapter leader as the group owner
+    File.open(SWC_GROUPS, 'w') { |f| f.puts swc_groups.to_json } # save latest group list
     updates = []
     swc_groups.select { |g| g['ownerId'] == GROUP_DEFAULT_OWNER.to_s }.each do |group|
       if leaders_by_group.key?(group['id'])
