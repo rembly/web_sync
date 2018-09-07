@@ -27,6 +27,7 @@ class SwcSync
   ACTION_TEAM_MEMBERS = File.join(File.dirname(__FILE__), '..', 'data', 'action_team_members.json')
   SWC_GROUPS = File.join(File.dirname(__FILE__), '..', 'data', 'swc_groups.json')
   SWC_GROUP_OWNERS = File.join(File.dirname(__FILE__), '..', 'data', 'swc_groups_owners.json')
+  SWC_SF_GROUP_MAP = File.join(File.dirname(__FILE__), '..', 'data', 'swc_sf_group_map.json')
   DRIVE_COLUMNS = %i[id email path title description mime_type].freeze
   DEFAULT_CATEGORY = '1'
   SWC_CONTACT_FIELDS = %w[Email FirstName LastName Region__c Group_del__c SWC_Create_User__c SWC_Chapter_Status__c SWC_User_ID__c SWC_Regional_Coordinator__c SWC_Staff__c SWC_State_Coordinator__c SWC_Liaison__c SWC_Group_Leader__c Country_Full_Name__c Group_del__r.SWC_Group_ID__c Group_Leader_del__c].freeze
@@ -75,6 +76,13 @@ class SwcSync
     leaders = group_leaders_by_group_id
     import_string = chapters.collect { |ch| get_chapter_json_from_sf(ch, leaders) }
     File.open(CHAPTER_FILE_LOCATION, 'w') { |f| f.puts(import_string.to_json) }
+  end
+
+  def build_swc_sf_group_map
+    groups = sf.client.query('SELECT Id, SWC_Group_ID__c, Name FROM Group__c WHERE SWC_Group_ID__c <> null')
+    File.open(SWC_SF_GROUP_MAP, 'w') do |f|
+      f.puts({ 'group_map': groups.map { |g| { 'swl_group': g.SWC_Group_ID__c.to_i.to_s, 'thirdparty_group': g.Name } } }.to_json)
+    end
   end
 
   def build_action_team_import
@@ -165,18 +173,41 @@ class SwcSync
       'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '2' }
   end
 
-  def upload_files
-    CSV.foreach(BUDDY_FILES_CSV) { |row| upload_file(row[1], row[2], row[3], row[4]) }
+  def buddy_drive_files
+    wp_client.query(<<-QUERY)
+      SELECT u.ID as userId, u.user_login, u.user_email as email, wp.guid as path, wp.post_title as title, wp.id as post_id,
+        wp.post_content as description, post_mime_type as mime_type, wp.post_status, g.name as group_name
+      FROM wp_users u JOIN wp_posts wp ON wp.post_author = u.ID
+      LEFT JOIN wp_postmeta wm on wm.post_id = wp.id AND wm.meta_key = '_buddydrive_sharing_groups'
+      LEFT JOIN wp_bp_groups g ON g.id = wm.meta_value
+      WHERE post_type = 'buddydrive-file'
+    QUERY
   end
 
-  def upload_file(email, url, title, description)
-    id = find_user_id_from_email(email)
-    if id.present?
+  def upload_files
+    # CSV.foreach(BUDDY_FILES_CSV) { |row| upload_file(row[1], row[2], row[3], row[4]) }
+    sf_community_users = sf.client.query("SELECT Id, FirstName, LastName, Email, SWC_User_ID__c, CCL_Community_Username__c FROM Contact WHERE CCL_Community_Username__c <> ''")
+                           .each_with_object({}) { |user, map| map[user.CCL_Community_Username__c] = user.SWC_User_ID__c }
+    sf_groups = sf.client.query('SELECT Id, SWC_Group_ID__c, Name FROM Group__c WHERE SWC_Group_ID__c <> null')
+                  .each_with_object({}) { |group, map| map[CGI.escape(group.Name)] = group.SWC_Group_ID__c }
+    sw_action_teams = call(endpoint: 'groups', params: { categoryId: '5' })
+
+    buddy_drive_files.each do |buddy_file|
+      # find the user and group
+      user = sf_community_users[buddy_file['user_login']]
+      group = sf_groups[buddy_file['group_name']]
+      upload_file(buddy_file, user, group)
+    end
+  end
+
+  def upload_file(file, user_id, group_id)
+    if user_id.present?
       filename = File.basename(URI.parse(url)&.path)
       file = File.new(File.join(FILES_PATH, filename), 'rb')
+      uri = URI.join(API_URL, group_id.present? ? "groups/#{group_id}/files" : 'files').to_s
       begin
-        RestClient.post(URI.join(API_URL, 'files').to_s, { file: file, title: title, description: description,
-                                                           public: false, userId: id, categoryId: DEFAULT_CATEGORY }, Authorization: "Bearer #{swc_token}")
+        RestClient.post(uri, { file: file, title: title, description: description,
+                               public: false, userId: id, categoryId: DEFAULT_CATEGORY }, Authorization: "Bearer #{swc_token}")
       rescue RestClient::ExceptionWithResponse => e
         return handle_response(e.response)
       end
