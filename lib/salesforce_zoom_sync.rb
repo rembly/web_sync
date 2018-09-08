@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_relative 'salesforce_sync'
 require_relative 'zoom_sync'
 require_relative './web_sync/email_notifier'
@@ -62,17 +64,15 @@ class SalesforceZoomSync
     # log intro call occurrence ID to file. Only write if not present in file
     IntroCallData.set_intro_call_occurrence(date: next_call['start_time'].to_datetime&.localtime&.to_date, occurrence_id: next_call['occurrence_id'])
     # add eligibile sf users to zoom if necessary
-    eligible_sf_users.select(&method(:sf_user_not_in_zoom?)).
-                      tap(&method(:log_zoom_add)).
-                      each{|user_to_add| @zoom_client.add_intro_meeting_registrant(user_to_add, next_call['occurrence_id'])}
+    eligible_sf_users.select(&method(:sf_user_not_in_zoom?))
+                     .tap(&method(:log_zoom_add))
+                     .each { |user_to_add| @zoom_client.add_intro_meeting_registrant(user_to_add, next_call['occurrence_id']) }
   end
 
   def sync_zoom_updates_to_sf
     @log.info('Syncing Zoom updates to SF')
     # get all zoom users who have watched the most recent intro call for more than the minimum duration
     sync_intro_call_webinar_users
-    # sync_ocat_webinar_registrants
-    # sync_ocat_webinar_users
   end
 
   def sync_ocat_updates_to_sf
@@ -100,15 +100,15 @@ class SalesforceZoomSync
     ocat_1_date = ocat_1.try(:first).dig('join_time')&.to_datetime&.localtime&.to_date
     ocat_2_date = ocat_2.try(:first).dig('join_time')&.to_datetime&.localtime&.to_date
     @log.debug("#{ocat_1&.size.to_i} attended OCAT 1 on #{ocat_1_date} and #{ocat_2&.size.to_i} attended OCAT 2 on #{ocat_2_date}")
-    # TODO do we need to email people who RSVPed but missed the call?
+    # TODO: do we need to email people who RSVPed but missed the call?
     add_ocat_participants(ocat_1, ocat_1_date)
     add_ocat_participants(ocat_2, ocat_2_date)
   end
 
   def add_ocat_participants(participants, ocat_date)
     @log.debug("No OCAT call participants to sync for #{ocat_date}") && return unless participants.any?
-    matched_email = update_zoom_attendees(participants, ocat_date, "OCAT Participants", 'New_Member_Call_Date__c', true)
-    matched_phone = update_zoom_callers(participants, ocat_date, "OCAT Call-Ins", 'New_Member_Call_Date__c', true)
+    matched_email = update_zoom_attendees(participants, ocat_date, 'OCAT Participants', 'New_Member_Call_Date__c', true)
+    matched_phone = update_zoom_callers(participants, ocat_date, 'OCAT Call-Ins', 'New_Member_Call_Date__c', true)
     log_unmatched_in_sf(matched_email.to_a | matched_phone.to_a, participants, "OCAT #{ocat_date}")
     # log_missed_call(participants, matched_email.to_a | matched_phone.to_a)
   end
@@ -122,8 +122,8 @@ class SalesforceZoomSync
     ocat_1 = @zoom_client.ocat_1_registrants.dig('registrants').select(&method(:valid_zoom_user_for_sf?))
     ocat_2 = @zoom_client.ocat_2_registrants.dig('registrants').select(&method(:valid_zoom_user_for_sf?))
     @log.debug("#{ocat_1&.size.to_i} registrants for OCAT #{next_ocat_1} and #{ocat_2&.size.to_i} registrants for OCAT #{next_ocat_2}")
-    matched_1 = update_zoom_attendees(ocat_1, next_ocat_1, "OCAT Registrants", SalesforceSync::OCAT_RSVP_FIELD, true)
-    matched_2 = update_zoom_attendees(ocat_2, next_ocat_2, "OCAT Registrants", SalesforceSync::OCAT_RSVP_FIELD, true)
+    matched_1 = update_zoom_attendees(ocat_1, next_ocat_1, 'OCAT Registrants', SalesforceSync::OCAT_RSVP_FIELD, true)
+    matched_2 = update_zoom_attendees(ocat_2, next_ocat_2, 'OCAT Registrants', SalesforceSync::OCAT_RSVP_FIELD, true)
     log_unmatched_in_sf(matched_1.to_a, ocat_1, "OCAT #{next_ocat_1} RSVP")
     log_unmatched_in_sf(matched_2.to_a, ocat_2, "OCAT #{next_ocat_2} RSVP")
   end
@@ -132,14 +132,14 @@ class SalesforceZoomSync
     @log.debug("No OCAT registrants to sync for #{ocat_date}") && return unless registrants.any?
     matched_email = @sf.sf_users_for_zoom_emails(registrants)
     log_sf_update(matched_email, 'OCAT registrants', ocat_date)
-    matched_email.each{|user| @sf.set_ocat_rsvp_for_contact(contact: user, date: ocat_date) } if matched_email.try(:any?)
+    matched_email.each { |user| @sf.set_ocat_rsvp_for_contact(contact: user, date: ocat_date) } if matched_email.try(:any?)
     log_unmatched_in_sf(matched_email.to_a, registrants, "OCAT #{ocat_date} RSVP")
     matched_email
   end
 
   def add_meeting_participants(meeting_participants)
-    participants = meeting_participants.dig('participants').select(&method(:valid_intro_call_duration)).
-                    select(&method(:valid_zoom_user_for_sf?))
+    participants = meeting_participants.dig('participants').select(&method(:valid_intro_call_duration))
+                                       .select(&method(:valid_zoom_user_for_sf?))
     @log.debug('No intro call participants to sync') && return unless participants.any?
     intro_call_date = participants.try(:first).dig('join_time')&.to_datetime&.localtime&.to_date
     matched_email = update_zoom_attendees(participants, intro_call_date, 'Intro Call Attendees', SalesforceSync::INTRO_CALL_DATE_FIELD)
@@ -152,18 +152,19 @@ class SalesforceZoomSync
   def update_zoom_attendees(participants, call_date, call_type, date_field, only_new = false)
     @log.debug("No #{call_type} participants to sync for #{call_date}") && return unless participants.any?
     matched_email = @sf.sf_users_for_zoom_emails(participants)
-    matched_email = matched_email.select{|c| c.send(date_field).blank? || c.send(date_field).to_date < call_date} if only_new
-    log_sf_update(matched_email, call_type, call_date)
-    matched_email.each{|user| @sf.set_contact_date(contact: user, date: call_date, date_field: date_field) } if matched_email.try(:any?)
+    to_update = only_new ? matched_email.select { |c| c.send(date_field).blank? || c.send(date_field).to_date < call_date } : matched_email
+    log_sf_update(to_update, call_type, call_date)
+    to_update.each { |user| @sf.set_contact_date(contact: user, date: call_date, date_field: date_field) } if to_update.try(:any?)
+    # return all matched, not just updated
     matched_email
   end
 
   def update_zoom_callers(participants, call_date, call_type, date_field, only_new = false)
     @log.debug("No #{call_type} participants to sync for #{call_date}") && return unless participants.any?
     matched_phone = @sf.sf_users_for_zoom_callers(participants)
-    matched_phone = matched_phone.select{|c| c.send(date_field).blank? || c.send(date_field).to_date < call_date} if only_new
-    log_sf_update(matched_phone, call_type, call_date)
-    matched_phone.each{|user| @sf.set_contact_date(contact: user, date: call_date, date_field: date_field) } if matched_phone.try(:any?)
+    to_update = only_new ? matched_phone.select { |c| c.send(date_field).blank? || c.send(date_field).to_date < call_date } : matched_phone
+    log_sf_update(to_update, call_type, call_date)
+    to_update.each { |user| @sf.set_contact_date(contact: user, date: call_date, date_field: date_field) } if to_update.try(:any?)
     matched_phone
   end
 
@@ -175,25 +176,25 @@ class SalesforceZoomSync
 
   def log_zoom_add(users_to_add_to_zoom)
     log("Registering #{users_to_add_to_zoom.try(:size).to_i} users for Intro Call:")
-    users_to_add_to_zoom.each{|user| log(sf_user_link(user))} if users_to_add_to_zoom.try(:any?)
+    users_to_add_to_zoom.each { |user| log(sf_user_link(user)) } if users_to_add_to_zoom.try(:any?)
   end
 
   def log_sf_update(sf_users, type, date)
     # log("<br/>Updating #{sf_users.try(:size).to_i} Salesforce records with Intro Call #{type} for #{date}:")
     log("<br/>Updating #{sf_users.try(:size).to_i} Salesforce records with #{type} for #{date}:")
-    sf_users.each{|user| log(sf_user_print(user))} if sf_users.try(:any?)
+    sf_users.each { |user| log(sf_user_print(user)) } if sf_users.try(:any?)
   end
 
-  def log_missed_call(participants, matched_sf)
+  def log_missed_call(_participants, matched_sf)
     last_occurrence_id = IntroCallData.get_latest_intro_call
     log('<br/>No previous intro call occurrence found') && return unless last_occurrence_id.present?
     registrants = @zoom_client.intro_call_registrants(last_occurrence_id).dig('registrants')
     # registrant SF records (because we need SF records for phone attendees)
     sf_registrants = @sf.sf_users_for_zoom_emails(registrants)
     # registrants missing from actual call. Log count and update intro missed flag
-    missing_from_intro_call = sf_registrants.select{|registrant| matched_sf.none?{|attended| attended.Id == registrant.Id}}
+    missing_from_intro_call = sf_registrants.select { |registrant| matched_sf.none? { |attended| attended.Id == registrant.Id } }
     log("<br/>#{missing_from_intro_call.size} Registrants missed the intro call. Using occurrence #{last_occurrence_id}:")
-    missing_from_intro_call.each{|user| log(sf_user_link(user)); @sf.set_intro_call_missed(contact: user) }
+    missing_from_intro_call.each { |user| log(sf_user_link(user)); @sf.set_intro_call_missed(contact: user) }
   end
 
   # cache all users registered for intro call
@@ -203,7 +204,7 @@ class SalesforceZoomSync
   end
 
   def sf_user_not_in_zoom?(sf_user)
-    ! sf_user_in_zoom?(sf_user)
+    !sf_user_in_zoom?(sf_user)
   end
 
   def sf_user_in_zoom?(sf_user)
@@ -214,7 +215,7 @@ class SalesforceZoomSync
   def zoom_user_from_sf_user(sf_user)
     all_sf_emails = SalesforceSync.all_emails_for_user(sf_user)
     # is there a zoom user whose email address matches any of the addresses for this SF user
-    @zoom_registrants.find{|zoom_user| all_sf_emails.any?{|sf_email| zoom_user['email'].to_s.casecmp(sf_email).zero?}}
+    @zoom_registrants.find { |zoom_user| all_sf_emails.any? { |sf_email| zoom_user['email'].to_s.casecmp(sf_email).zero? } }
   end
 
   def valid_intro_call_duration(participant)
@@ -234,26 +235,26 @@ class SalesforceZoomSync
   end
 
   def log_unmatched_in_sf(matched_sf, zoom_participants, webinar_type)
-    log("No Zoom users for #{webinar_type} were unmatched") && return if (matched_sf.to_a.none? || zoom_participants.to_a.none?)
+    log("No Zoom users for #{webinar_type} were unmatched") && return if zoom_participants.to_a.none?
 
-    zoom_participants.select{|zoom_user| zoom_user_not_in_sf_list(zoom_user, matched_sf)}.
-                      tap{|unmatched| 
-                        if unmatched.size > 0
-                          log("<br/>#{unmatched.size} Zoom #{webinar_type} users could not be found in Salesforce:") 
-                        end
-                      }.each{|unmatched_intro_attendee| log(zoom_user_print(unmatched_intro_attendee))}
+    zoom_participants.select { |zoom_user| zoom_user_not_in_sf_list(zoom_user, matched_sf) }
+                     .tap  do |unmatched|
+      unless unmatched.empty?
+        log("<br/>#{unmatched.size} Zoom #{webinar_type} users could not be found in Salesforce:")
+      end
+    end.each { |unmatched_intro_attendee| log(zoom_user_print(unmatched_intro_attendee)) }
   end
 
   def zoom_user_not_in_sf_list(zoom_user, sf_list)
     sf_list.none? do |sf_user|
-      SalesforceSync.all_emails_for_user(sf_user).any?{|sf_email| zoom_user['user_email'].to_s.casecmp(sf_email).zero?} ||
-          SalesforceSync.all_phone_numbers_for_user(sf_user).any?{|sf_phone| phone_match?(sf_phone, zoom_user['name'])}
+      SalesforceSync.all_emails_for_user(sf_user).any? { |sf_email| zoom_user['user_email'].to_s.casecmp(sf_email).zero? } ||
+        SalesforceSync.all_phone_numbers_for_user(sf_user).any? { |sf_phone| phone_match?(sf_phone, zoom_user['name']) }
     end
   end
 
   def phone_match?(sf_phone, zoom_phone)
-    sf = sf_phone.to_s.gsub(/[^\d]/,'')
-    sf.include?(zoom_phone.to_s) || zoom_phone.to_s.include?(sf)
+    sf_num = sf_phone.to_s.gsub(/[^\d]/, '')
+    sf_num.present? && (sf_num.include?(zoom_phone.to_s) || zoom_phone.to_s.include?(sf_num))
   end
 
   def sf_user_link(user)
