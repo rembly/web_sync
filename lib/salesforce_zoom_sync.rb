@@ -221,8 +221,8 @@ class SalesforceZoomSync
 
   def valid_zoom_attendees(list = [], minimum_duration)
     list.select(&method(:valid_zoom_user_for_sf?)).select do |user|
-      list.select { |u| u['name'] == user['name'] && u['user_email'] == user['user_email'] }
-          .sum { |u| u['duration'] }.to_i >= minimum_duration
+      user['duration'] >= minimum_duration || list.select { |u| u['name'] == user['name'] && u['user_email'] == user['user_email'] }.
+                                                   sum { |u| u['duration'] }.to_i >= minimum_duration
     end
   end
 
