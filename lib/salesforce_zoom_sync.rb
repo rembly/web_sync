@@ -95,8 +95,8 @@ class SalesforceZoomSync
 
   def sync_ocat_webinar_users
     @log.debug('Setting OCAT attendance...')
-    ocat_1 = @zoom_client.ocat_1_participants.dig('participants').select(&method(:valid_ocat_call_duration)).select(&method(:valid_zoom_user_for_sf?))
-    ocat_2 = @zoom_client.ocat_2_participants.dig('participants').select(&method(:valid_ocat_call_duration)).select(&method(:valid_zoom_user_for_sf?))
+    ocat_1 = valid_ocat_call_users(@zoom_client.ocat_1_participants.dig('participants'))
+    ocat_2 = valid_ocat_call_users(@zoom_client.ocat_2_participants.dig('participants'))
     ocat_1_date = ocat_1.try(:first).dig('join_time')&.to_datetime&.localtime&.to_date
     ocat_2_date = ocat_2.try(:first).dig('join_time')&.to_datetime&.localtime&.to_date
     @log.debug("#{ocat_1&.size.to_i} attended OCAT 1 on #{ocat_1_date} and #{ocat_2&.size.to_i} attended OCAT 2 on #{ocat_2_date}")
@@ -138,8 +138,7 @@ class SalesforceZoomSync
   end
 
   def add_meeting_participants(meeting_participants)
-    participants = meeting_participants.dig('participants').select(&method(:valid_intro_call_duration))
-                                       .select(&method(:valid_zoom_user_for_sf?))
+    participants = valid_intro_call_users(meeting_participants)
     @log.debug('No intro call participants to sync') && return unless participants.any?
     intro_call_date = participants.try(:first).dig('join_time')&.to_datetime&.localtime&.to_date
     matched_email = update_zoom_attendees(participants, intro_call_date, 'Intro Call Attendees', SalesforceSync::INTRO_CALL_DATE_FIELD)
@@ -180,7 +179,6 @@ class SalesforceZoomSync
   end
 
   def log_sf_update(sf_users, type, date)
-    # log("<br/>Updating #{sf_users.try(:size).to_i} Salesforce records with Intro Call #{type} for #{date}:")
     log("<br/>Updating #{sf_users.try(:size).to_i} Salesforce records with #{type} for #{date}:")
     sf_users.each { |user| log(sf_user_print(user)) } if sf_users.try(:any?)
   end
@@ -218,12 +216,14 @@ class SalesforceZoomSync
     @zoom_registrants.find { |zoom_user| all_sf_emails.any? { |sf_email| zoom_user['email'].to_s.casecmp(sf_email).zero? } }
   end
 
-  def valid_intro_call_duration(participant)
-    participant.dig('duration').to_i >= ZoomSync::MINIMUM_DURATION_FOR_INTRO_CALL
-  end
+  def valid_intro_call_users(list); valid_zoom_attendees(list, ZoomSync::MINIMUM_DURATION_FOR_INTRO_CALL) end
+  def valid_ocat_call_users(list); valid_zoom_attendees(list, ZoomSync::MINIMUM_DURATION_FOR_OCAT_CALL) end
 
-  def valid_ocat_call_duration(participant)
-    participant.dig('duration').to_i >= ZoomSync::MINIMUM_DURATION_FOR_OCAT_CALL
+  def valid_zoom_attendees(list = [], minimum_duration)
+    list.select(&method(:valid_zoom_user_for_sf?)).select do |user|
+      list.select { |u| u['name'] == user['name'] && u['user_email'] == user['user_email'] }
+          .sum { |u| u['duration'] }.to_i >= minimum_duration
+    end
   end
 
   def valid_zoom_user_for_sf?(participant)
@@ -237,8 +237,7 @@ class SalesforceZoomSync
   def log_unmatched_in_sf(matched_sf, zoom_participants, webinar_type)
     log("No Zoom users for #{webinar_type} were unmatched") && return if zoom_participants.to_a.none?
 
-    zoom_participants.select { |zoom_user| zoom_user_not_in_sf_list(zoom_user, matched_sf) }
-                     .tap  do |unmatched|
+    zoom_participants.select { |zoom_user| zoom_user_not_in_sf_list(zoom_user, matched_sf) }.tap do |unmatched|
       unless unmatched.empty?
         log("<br/>#{unmatched.size} Zoom #{webinar_type} users could not be found in Salesforce:")
       end
