@@ -190,28 +190,38 @@ class SwcSync
                            .each_with_object({}) { |user, map| map[user.CCL_Community_Username__c] = user.SWC_User_ID__c }
     sf_groups = sf.client.query('SELECT Id, SWC_Group_ID__c, Name FROM Group__c WHERE SWC_Group_ID__c <> null')
                   .each_with_object({}) { |group, map| map[CGI.escape(group.Name)] = group.SWC_Group_ID__c }
-    sw_action_teams = call(endpoint: 'groups', params: { categoryId: '5' })
+    all_groups = call(endpoint: 'groups', params: { categoryId: '5' }).each_with_object(sf_groups){|grp, map| map[grp['name']] = grp['id']}
 
     buddy_drive_files.each do |buddy_file|
       # find the user and group
-      user = sf_community_users[buddy_file['user_login']]
-      group = sf_groups[buddy_file['group_name']]
-      upload_file(buddy_file, user, group)
+      user_id = sf_community_users[buddy_file['user_login']]
+      group_id = all_groups[CGI.escape(buddy_file['group_name'].to_s)]&.to_i&.to_s
+      if buddy_file['group_name'].blank? || (buddy_file['group_name'].present? && group_id.present?)
+        upload_file(buddy_file, user_id, group_id)
+      else
+        LOG.error("Couldn't find group #{buddy_file['group_name']} for file: #{buddy_file}")
+      end
     end
   end
 
   def upload_file(file, user_id, group_id)
     if user_id.present?
-      filename = File.basename(URI.parse(url)&.path)
-      file = File.new(File.join(FILES_PATH, filename), 'rb')
-      uri = URI.join(API_URL, group_id.present? ? "groups/#{group_id}/files" : 'files').to_s
       begin
-        RestClient.post(uri, { file: file, title: title, description: description,
+        filename = File.basename(URI.parse(file['path'])&.path)
+        upload = File.join(FILES_PATH, filename)
+        uri = URI.join(API_URL, group_id.present? ? "groups/#{group_id}/files" : 'files').to_s
+        # LOG.info("Uploading #{group_id.present? ? 'Group' : ''} File #{file}, URI: #{uri}, User: #{user_id}, Group: #{group_id}, File: #{upload}")
+        RestClient.post(uri, { file: upload, title: file['title'], description: file['description'],
                                public: false, userId: id, categoryId: DEFAULT_CATEGORY }, Authorization: "Bearer #{swc_token}")
       rescue RestClient::ExceptionWithResponse => e
         return handle_response(e.response)
+      rescue URI::InvalidURIError => e
+        LOG.error("Could not upload #{group_id.present? ? 'Group' : ''} File #{file}, URI: #{uri}, User: #{user_id}, Group: #{group_id}, File: #{upload}")
+        LOG.error("Exception: #{e.message}")
       end
-   end
+    else
+      LOG.error("User #{user_id} not found for file upload #{file}")
+    end
   end
 
   def find_user_id_from_email(email)
