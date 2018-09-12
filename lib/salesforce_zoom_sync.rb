@@ -48,7 +48,7 @@ class SalesforceZoomSync
     @summary = ["Syncing OCAT Calls to Salesforce for #{Date.today}"]
     @log.info("Starting nightly sync. Salesforce user: #{ENV['SALESFORCE_USER']}")
     sync_ocat_updates_to_sf
-    send_summary_email('brett@citizensclimate.org,bryan.hermsen@citizensclimate.org')
+    send_summary_email('brett@citizensclimate.org,bryan.hermsen@citizensclimate.org,sara.wanous@citizensclimatelobby.org')
     wait_for_zoom_queue_thread
   end
 
