@@ -17,9 +17,9 @@ require 'csv'
 class SwcSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'swc.log'))
   HALT_CALL_QUEUE_SIGNAL = :stop
-  MAX_CALLS_PER_SECOND = 1.5 # 1 second limit plus buffer
+  MAX_CALLS_PER_SECOND = 0.6
   TIME_BETWEEN_CALLS = 0.6
-  API_URL = 'http://cclobby.smallworldlabs.com/services/4.0/'
+  API_URL = "http://#{ENV['SWC_AUDIENCE']}/services/4.0/"
   FILES_PATH = ENV['BUDDY_FILE_PATH']
   CHAPTER_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', 'data', 'chapter_import.json')
   ACTION_TEAM_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', 'data', 'action_team_import.json')
@@ -62,22 +62,16 @@ class SwcSync
     @users.present? ? @users : @users = call(endpoint: 'users')
   end
 
-  def get_sf_contacts
-    # WHERE LastName = 'Hermsen' AND Is_CCL_Supporter__c = True
-    contacts = @sf.client.query(<<-QUERY)
-      SELECT #{SWC_CONTACT_FIELDS.join(', ')}
-      FROM Contact
-    QUERY
-  end
-
+  # 1 first script
   def build_ccl_chapter_import
-    # selects active and in-progress chapters.
+    # selects active and in-progress chapters. todo: for sample import? limit chapters?
     chapters = sf.ccl_chapters
     leaders = group_leaders_by_group_id
     import_string = chapters.collect { |ch| get_chapter_json_from_sf(ch, leaders) }
     File.open(CHAPTER_FILE_LOCATION, 'w') { |f| f.puts(import_string.to_json) }
   end
 
+  # #5 - builds the mapping of SWC group to SF group for import in the SWC group admin page
   def build_swc_sf_group_map
     groups = sf.client.query('SELECT Id, SWC_Group_ID__c, Name FROM Group__c WHERE SWC_Group_ID__c <> null')
     File.open(SWC_SF_GROUP_MAP, 'w') do |f|
@@ -85,6 +79,7 @@ class SwcSync
     end
   end
 
+  # 3
   def build_action_team_import
     action_teams = wp_client.query('SELECT * FROM wp_bp_groups WHERE parent_id = 283')
     action_teams_by_name = action_teams.to_a.each_with_object({}) { |team, map| map[team['name']] = team }
@@ -103,8 +98,8 @@ class SwcSync
     QUERY
   end
 
-  # after initial import of groups via import tool, set the SWC ID in SF
-  # TODO: we could build a CSV for mass update depending on API call limit..
+  # #2 - after initial import of groups via import tool, set the SWC ID in SF
+  # TODO: we could build a CSV for mass update in SF depending on API call limit..
   def set_group_id_in_sf
     sw_groups = call(endpoint: 'groups')
     by_name = sw_groups.group_by { |grp| grp['name'] }
@@ -118,20 +113,23 @@ class SwcSync
     end
   end
 
+  # #4 - set action team members via JSON import file for use with import tool
   def set_action_team_members
     action_members = action_team_members
     swc_action_teams = call(endpoint: 'groups', params: { categoryId: ACTION_TEAM_CATEGORY })
     team_names = swc_action_teams.each_with_object({}) { |team, map| map[team['name']] = team['id']; }
-    sf_community_users = sf.client.query("SELECT Id, FirstName, LastName, Email, SWC_User_ID__c, CCL_Community_Username__c FROM Contact WHERE CCL_Community_Username__c <> ''")
+    # TODO limit by SWC ID present?
+    sf_community_users = sf.client.query("SELECT Id, FirstName, LastName, Email, SWC_User_ID__c, CCL_Community_Username__c FROM Contact WHERE CCL_Community_Username__c <> '' AND SWC_User_ID__c <> 0")
     user_logins = sf_community_users.each_with_object({}) { |user, map| map[user.CCL_Community_Username__c] = user; }
 
     update = action_members.each_with_object([]) do |member, updates|
-      # can we find them in SF, can we find the action team SW ID? do they have a SW ID in SF?
+      # this will create a user if we don't filter SF users by those with SWC ID
       username = member['user_login']
       action_team = CGI.escape(member['group_name'])
       next unless user_logins.include?(username) && team_names.key?(action_team)
       sf_user = user_logins[username]
-      updates << { '*_email_address': sf_user.Email.gsub('+', '%2B'), '*_username': sf_user.FirstName + '_' + sf_user.LastName,
+      ##### Set userId as well?
+      updates << { '*_email_address': sf_user.Email.to_s.gsub('+', '%2B'), '*_username': sf_user.FirstName + '_' + sf_user.LastName,
                    '*_first_name': sf_user.FirstName, '*_last_name': sf_user.LastName, 'o_groups': team_names[action_team] }
     end
     # can do multiple of the same user
@@ -173,6 +171,31 @@ class SwcSync
       'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '2' }
   end
 
+  # CAUTION run this only after confirming you're pointing at staging and not production
+  def reset_staging
+    return false unless ENV['ENVIRONMENT'] == 'development' && API_URL.include?('stage')
+    # clear_groups()
+    groups_to_delete = call(endpoint: 'groups', params: { categoryId: '4,5,6' })
+    # TODO: group member records get cleared too right?
+    groups_to_delete.each{|g| send_delete(endpoint: "groups/#{g['id']}");sleep MAX_CALLS_PER_SECOND}
+
+    # delete users with userId > 33
+    all_users = call(endpoint: 'users')
+    users_to_remove = all_users.select{|u| u['userId'].to_i > 33}
+    # lets get all files so that we're not re-fetching for each user
+    files = call(endpoint: 'files')
+    files_by_user = files.group_by{|f| f['userId']}
+    # for each user remove their files
+    users_to_remove.each do |user|
+      # delete files
+      files_by_user[user['userId']].each{|file| send_delete(endpoint: "files/#{file['id']}");sleep MAX_CALLS_PER_SECOND}
+      send_delete(endpoint: "users/#{userId}")
+      sleep MAX_CALLS_PER_SECOND
+    end
+
+    # TODO - upload empty group to SF group mapping?
+  end
+
   def buddy_drive_files
     wp_client.query(<<-QUERY)
       SELECT u.ID as userId, u.user_login, u.user_email as email, wp.guid as path, wp.post_title as title, wp.id as post_id,
@@ -184,9 +207,10 @@ class SwcSync
     QUERY
   end
 
+  # 6
   def upload_files
     # CSV.foreach(BUDDY_FILES_CSV) { |row| upload_file(row[1], row[2], row[3], row[4]) }
-    sf_community_users = sf.client.query("SELECT Id, FirstName, LastName, Email, SWC_User_ID__c, CCL_Community_Username__c FROM Contact WHERE CCL_Community_Username__c <> ''")
+    sf_community_users = sf.client.query("SELECT Id, FirstName, LastName, Email, SWC_User_ID__c, CCL_Community_Username__c FROM Contact WHERE CCL_Community_Username__c <> '' AND SWC_User_ID__c <> 0")
                            .each_with_object({}) { |user, map| map[user.CCL_Community_Username__c] = user.SWC_User_ID__c }
     sf_groups = sf.client.query('SELECT Id, SWC_Group_ID__c, Name FROM Group__c WHERE SWC_Group_ID__c <> null')
                   .each_with_object({}) { |group, map| map[CGI.escape(group.Name)] = group.SWC_Group_ID__c }
@@ -212,7 +236,7 @@ class SwcSync
         uri = URI.join(API_URL, group_id.present? ? "groups/#{group_id}/files" : 'files').to_s
         # LOG.info("Uploading #{group_id.present? ? 'Group' : ''} File #{file}, URI: #{uri}, User: #{user_id}, Group: #{group_id}, File: #{upload}")
         RestClient.post(uri, { file: upload, title: file['title'], description: file['description'],
-                               public: false, userId: id, categoryId: DEFAULT_CATEGORY }, Authorization: "Bearer #{swc_token}")
+                               public: false, userId: user_id, categoryId: DEFAULT_CATEGORY }, Authorization: "Bearer #{swc_token}")
       rescue RestClient::ExceptionWithResponse => e
         return handle_response(e.response)
       rescue URI::InvalidURIError => e
@@ -242,7 +266,7 @@ class SwcSync
       end
     end
     File.open(SWC_GROUP_OWNERS, 'w') { |f| f.puts(updates.to_json) }
- end
+  end
 
   def call(endpoint:, params: {})
     base_uri = URI.join(API_URL, endpoint).to_s
@@ -259,6 +283,24 @@ class SwcSync
     @call_queue << lambda {
       results = call(endpoint: endpoint, params: params)
       yield(results)
+    }
+  end
+
+  def send_delete(endpoint:, params: {})
+    base_uri = URI.join(API_URL, endpoint).to_s
+    begin
+      RestClient.delete(base_uri, Authorization: "Bearer #{swc_token}")
+      LOG.info("Deleted: #{endpoint}")
+      # return handle_response(response)
+    rescue RestClient::ExceptionWithResponse => e
+      return handle_response(e.response)
+    end
+  end
+
+  # schedule call for later, taking API limit into account. Passes results of call to callback
+  def queue_delete(endpoint:, &callback)
+    @call_queue << lambda {
+      send_delete(endpoint: endpoint)
     }
   end
 
@@ -324,12 +366,20 @@ class SwcSync
   # take API calls from the call queue and execute with API limits. Consumer expects callable object
   def start_request_queue_consumer
     Thread.new do
-      while (call_request = @call_queue.pop) != HALT_CALL_QUEUE_SIGNAL
-        call_request.call
+      while (call_request = @call_queue.pop)
+        break if call_request == HALT_CALL_QUEUE_SIGNAL
+        call_request.call()
         sleep MAX_CALLS_PER_SECOND
       end
 
       LOG.info('SWC sync queue halt signal received, ending thread')
     end
   end
+end
+
+def run_delete 
+  sc = SwcSync.new
+  groups = sc.call(endpoint: 'groups', params: { categoryId: '4,5,6' }).select{|g| g['id'].to_i >= 40}
+  # groups.each{|g| sc.queue_delete(endpoint: "groups/#{g['id']}")}
+  groups.each{|g| sc.send_delete(endpoint: "groups/#{g['id']}"); sleep MAX_CALLS_PER_SECOND}
 end
