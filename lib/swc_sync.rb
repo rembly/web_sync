@@ -213,30 +213,38 @@ class SwcSync
     sf_community_users = sf.client.query("SELECT Id, FirstName, LastName, Email, SWC_User_ID__c, CCL_Community_Username__c FROM Contact WHERE CCL_Community_Username__c <> '' AND SWC_User_ID__c <> 0")
                            .each_with_object({}) { |user, map| map[user.CCL_Community_Username__c] = user.SWC_User_ID__c }
     sf_groups = sf.client.query('SELECT Id, SWC_Group_ID__c, Name FROM Group__c WHERE SWC_Group_ID__c <> null')
-                  .each_with_object({}) { |group, map| map[CGI.escape(group.Name)] = group.SWC_Group_ID__c }
-    all_groups = call(endpoint: 'groups', params: { categoryId: '5' }).each_with_object(sf_groups){|grp, map| map[grp['name']] = grp['id']}
-
+                  .each_with_object({}) { |group, map| map[CGI.escape(group.Name.downcase)] = group.SWC_Group_ID__c }
+    all_groups = call(endpoint: 'groups').each_with_object(sf_groups){|grp, map| map[grp['name'].downcase] = grp['id']}
+    missing_groups = Set.new
+    upload_count = 0
     buddy_drive_files.each do |buddy_file|
       # find the user and group
-      user_id = sf_community_users[buddy_file['user_login']]
-      group_id = all_groups[CGI.escape(buddy_file['group_name'].to_s)]&.to_i&.to_s
+      user_id = sf_community_users[buddy_file['user_login']].to_i.to_s
+      group_id = all_groups[CGI.escape(buddy_file['group_name'].to_s.downcase)]&.to_i&.to_s
+
       if buddy_file['group_name'].blank? || (buddy_file['group_name'].present? && group_id.present?)
         upload_file(buddy_file, user_id, group_id)
+        sleep MAX_CALLS_PER_SECOND
+        upload_count += 1
       else
         LOG.error("Couldn't find group #{buddy_file['group_name']} for file: #{buddy_file}")
+        missing_groups << buddy_file['group_name']
       end
     end
+
+    LOG.error("***Missing groups: " + missing_groups.to_a.to_s)
+    LOG.info("***Uploaded: #{upload_count} files")
   end
 
   def upload_file(file, user_id, group_id)
-    if user_id.present?
+    if user_id.to_i.nonzero?
       begin
         filename = File.basename(URI.parse(file['path'])&.path)
         upload = File.join(FILES_PATH, filename)
         uri = URI.join(API_URL, group_id.present? ? "groups/#{group_id}/files" : 'files').to_s
         # LOG.info("Uploading #{group_id.present? ? 'Group' : ''} File #{file}, URI: #{uri}, User: #{user_id}, Group: #{group_id}, File: #{upload}")
         RestClient.post(uri, { file: upload, title: file['title'], description: file['description'],
-                               public: false, userId: user_id, categoryId: DEFAULT_CATEGORY }, Authorization: "Bearer #{swc_token}")
+                               public: false, userId: user_id, categoryId: '0' }, Authorization: "Bearer #{swc_token}")
       rescue RestClient::ExceptionWithResponse => e
         return handle_response(e.response)
       rescue URI::InvalidURIError => e
