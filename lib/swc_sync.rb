@@ -17,14 +17,16 @@ require 'csv'
 class SwcSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'swc.log'))
   HALT_CALL_QUEUE_SIGNAL = :stop
-  MAX_CALLS_PER_SECOND = 0.6
-  TIME_BETWEEN_CALLS = 0.6
-  API_URL = "http://#{ENV['SWC_AUDIENCE']}/services/4.0/"
+  MAX_CALLS_PER_SECOND = 0.4
+  TIME_BETWEEN_CALLS = 0.4
+  API_URL = "https://#{ENV['SWC_AUDIENCE']}/services/4.0/"
   FILES_PATH = ENV['BUDDY_FILE_PATH']
   CHAPTER_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', 'data', 'chapter_import.json')
   ACTION_TEAM_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', 'data', 'action_team_import.json')
   BUDDY_FILES_CSV = File.join(File.dirname(__FILE__), '..', 'data', 'buddy_drive_files.csv')
   ACTION_TEAM_MEMBERS = File.join(File.dirname(__FILE__), '..', 'data', 'action_team_members.json')
+  GROUP_MEMBERS = File.join(File.dirname(__FILE__), '..', 'data', 'group_members.json')
+  STATE_COORD_MEMBERS = File.join(File.dirname(__FILE__), '..', 'data', 'state_coord_members.json')
   SWC_GROUPS = File.join(File.dirname(__FILE__), '..', 'data', 'swc_groups.json')
   SWC_GROUP_OWNERS = File.join(File.dirname(__FILE__), '..', 'data', 'swc_groups_owners.json')
   SWC_SF_GROUP_MAP = File.join(File.dirname(__FILE__), '..', 'data', 'swc_sf_group_map.json')
@@ -59,13 +61,27 @@ class SwcSync
   end
 
   def get_users
-    @users.present? ? @users : @users = call(endpoint: 'users')
+    @users.present? ? @users : @users = call(endpoint: 'users', params:{activeOnly: :false})
+  end
+
+  def sf_chapters_to_import
+    # for initial beta
+    # WHERE Creation_Stage__c IN ('In Progress', 'Active')
+    # AND Id in ('a0O0V00000bPUIR', 'a0Od000000FRaNj', 'a0Od000000ZE3aY', 'a0Od000000ZE3ad','a0Od000000Ws08z', 'a0Od000000FRaMq')
+    # WHERE MALatitude__c != null AND MALongitude__c != null AND 
+    sf.client.query(<<-QUERY)
+      SELECT #{SalesforceSync::DEFAULT_CHAPTER_FIELDS.join(', ')}
+      FROM Group__c
+        WHERE Creation_Stage__c IN ('In Progress') AND SWC_Group_ID__c = null
+        AND Id NOT IN ('a0O0V00000bPUIR', 'a0Od000000FRaNj', 'a0Od000000ZE3aY', 'a0Od000000ZE3ad','a0Od000000Ws08z', 'a0Od000000FRaMq')
+    QUERY
   end
 
   # 1 first script
   def build_ccl_chapter_import
     # selects active and in-progress chapters. todo: for sample import? limit chapters?
-    chapters = sf.ccl_chapters
+    # chapters = sf.ccl_chapters
+    chapters = sf_chapters_to_import
     leaders = group_leaders_by_group_id
     import_string = chapters.collect { |ch| get_chapter_json_from_sf(ch, leaders) }
     File.open(CHAPTER_FILE_LOCATION, 'w') { |f| f.puts(import_string.to_json) }
@@ -128,12 +144,62 @@ class SwcSync
       action_team = CGI.escape(member['group_name'])
       next unless user_logins.include?(username) && team_names.key?(action_team)
       sf_user = user_logins[username]
-      ##### Set userId as well?
-      updates << { '*_email_address': sf_user.Email.to_s.gsub('+', '%2B'), '*_username': sf_user.FirstName + '_' + sf_user.LastName,
+      updates << { '*_email_address': sf_user.Email.to_s.gsub('+', '%2B'), '*_username': sf_user.FirstName + ' ' + sf_user.LastName,
                    '*_first_name': sf_user.FirstName, '*_last_name': sf_user.LastName, 'o_groups': team_names[action_team] }
     end
     # can do multiple of the same user
     File.open(ACTION_TEAM_MEMBERS, 'w') { |f| f.puts(update.to_json) }
+  end
+
+  def sf_chapters_to_import
+    sf.client.query(<<-QUERY)
+      SELECT #{SalesforceSync::DEFAULT_CHAPTER_FIELDS.join(', ')}
+      FROM Group__c
+        WHERE Creation_Stage__c IN ('In Progress') AND SWC_Group_ID__c = null
+        AND Id NOT IN ('a0O0V00000bPUIR', 'a0Od000000FRaNj', 'a0Od000000ZE3aY', 'a0Od000000ZE3ad','a0Od000000Ws08z', 'a0Od000000FRaMq')
+    QUERY
+  end
+
+  # set group members via JSON import file for use with import tool
+  def set_group_members
+    group_leaders_id = "1767"
+    regional_coord_id = "946"
+    #users from sf w swc
+    group_members = sf.client.query("SELECT Id, Email, FirstName, LastName, Group_Leader_del__c, SWC_User_ID__c, Group_del__r.SWC_Group_ID__c,
+      Group_del__c, Is_Regional_Coordinator__c FROM Contact WHERE SWC_User_ID__c <> null AND Group_del__c <> null AND Group_del__r.SWC_Group_ID__c <> null")
+
+    update = group_members.each_with_object([]) do |contact, updates|
+      # this will create a user if we don't filter SF users by those with SWC ID
+      next unless contact&.Group_del__r&.SWC_Group_ID__c.present? 
+
+      group_ids = [contact.Group_del__r.SWC_Group_ID__c.to_i.to_s]
+      group_ids << group_leaders_id if contact.Group_Leader_del__c
+      group_ids << regional_coord_id if contact.Is_Regional_Coordinator__c
+
+      updates << { '*_email_address': contact.Email.to_s.gsub('+', '%2B'), '*_username': contact.FirstName + ' ' + contact.LastName,
+                   '*_first_name': contact.FirstName, '*_last_name': contact.LastName, 
+                   'o_groups': group_ids.join(',') }
+    end
+    # can do multiple of the same user
+    File.open(GROUP_MEMBERS, 'w') { |f| f.puts(update.to_json) }
+  end
+
+  def set_state_coord
+    state_coord_id = "999"
+
+    group_members = sf.client.query("SELECT Id, Email, FirstName, LastName, Group_Leader_del__c, SWC_User_ID__c, Group_del__r.SWC_Group_ID__c,
+      Group_del__c, Is_Regional_Coordinator__c, Is_State_Coordinator__c FROM Contact WHERE SWC_User_ID__c <> null AND Group_del__c <> null AND Group_del__r.SWC_Group_ID__c <> null AND Is_State_Coordinator__c = true")
+
+    update = group_members.each_with_object([]) do |contact, updates|
+      # this will create a user if we don't filter SF users by those with SWC ID
+      next unless contact&.Group_del__r&.SWC_Group_ID__c.present? 
+
+      updates << { '*_email_address': contact.Email.to_s.gsub('+', '%2B'), '*_username': contact.FirstName + ' ' + contact.LastName,
+                   '*_first_name': contact.FirstName, '*_last_name': contact.LastName, 
+                   'o_groups': '999' }
+    end
+    # can do multiple of the same user
+    File.open(STATE_COORD_MEMBERS, 'w') { |f| f.puts(update.to_json) }
   end
 
   # map of group ID to ONE group leader
@@ -151,13 +217,14 @@ class SwcSync
   end
 
   def get_chapter_json_from_sf(ch, leaders)
-    owner = leaders.key?(ch.Id) ? leaders[ch.Id].SWC_User_ID__c.to_i.to_s : GROUP_DEFAULT_OWNER
+    owner = leaders.key?(ch.Id) ? leaders[ch.Id].SWC_User_ID__c.to_i.to_s : GROUP_DEFAULT_OWNER.to_s
+
     { '*_name': ch.Name, '*_description': GROUP_DESCRIPTION_TEXT % ch.Name, '*_category_id': GROUP_CHAPTER_CATEGORY,
       '*_owner_user_id': owner, 'o_access_level': ch.Creation_Stage__c == 'In-Active' ? '3' : '1',
-      'o_address': ",,#{ch.City__c}, #{ch.State__c},, #{!ch.Country__c.nil? ? ch.Country__c : 'USA'}",
+      'o_address': ",,#{ch.City__c},#{ch.State__c},,#{!ch.Country__c.nil? ? ch.Country__c : 'USA'}",
       'o_news': GROUP_NEWS_TEXT % (ch.Group_Email__c || 'chapter@ccl.org'),
-      'o_content_forums': '1', 'o_content_invite': '2', 'o_content_events': '0', 'o_content_photos': '2',
-      'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '2' }
+      'o_content_forums': '2', 'o_content_events': '2', 'o_content_photos': '0',
+      'o_content_videos': '0', 'o_content_files': '1', 'o_content_members': '1' }
   end
 
   def get_action_team_json(sf_team, wp_action_team)
@@ -167,32 +234,32 @@ class SwcSync
 
     { '*_name': sf_team.Name, '*_description': wp_action_team.dig('description') || sf_team.Name,
       '*_category_id': ACTION_TEAM_CATEGORY, '*_owner_user_id': owner.to_i.to_s, 'o_access_level': status,
-      'o_content_forums': '1', 'o_content_invite': '2', 'o_content_events': '0', 'o_content_photos': '1',
-      'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '2' }
+      'o_content_forums': '2', 'o_content_events': '2', 'o_content_photos': '1',
+      'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '1' }
   end
 
   # CAUTION run this only after confirming you're pointing at staging and not production
   def reset_staging
     return false unless ENV['ENVIRONMENT'] == 'development' && API_URL.include?('stage')
-    # clear_groups()
-    groups_to_delete = call(endpoint: 'groups', params: { categoryId: '4,5,6' })
+    groups_to_delete = call(endpoint: 'groups')
+    # groups_to_delete = groups_to_delete.select{|g| ['4', '5', '6'].include?(g['categoryId'])}
     # TODO: group member records get cleared too right?
-    groups_to_delete.each{|g| send_delete(endpoint: "groups/#{g['id']}");sleep MAX_CALLS_PER_SECOND}
+    # groups_to_delete.each{|g| send_delete(endpoint: "groups/#{g['id']}");sleep MAX_CALLS_PER_SECOND}
 
-    # delete users with userId > 33
-    all_users = call(endpoint: 'users')
-    users_to_remove = all_users.select{|u| u['userId'].to_i > 33}
+    # delete users with userId > 33 AND <  15193
+    all_users = call(endpoint: 'users', params:{activeOnly: false})
+    users_to_remove = all_users.select{|u| u['userId'].to_i > 1092}
     # lets get all files so that we're not re-fetching for each user
     files = call(endpoint: 'files')
     files_by_user = files.group_by{|f| f['userId']}
     # for each user remove their files
     users_to_remove.each do |user|
       # delete files
-      files_by_user[user['userId']].each{|file| send_delete(endpoint: "files/#{file['id']}");sleep MAX_CALLS_PER_SECOND}
-      send_delete(endpoint: "users/#{userId}")
+      files_by_user[user['userId']].each{|file| send_delete(endpoint: "files/#{file['id']}");sleep MAX_CALLS_PER_SECOND} if files_by_user[user['userId']].present?
+      
+      send_delete(endpoint: "users/#{user['userId']}")
       sleep MAX_CALLS_PER_SECOND
     end
-
     # TODO - upload empty group to SF group mapping?
   end
 

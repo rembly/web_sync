@@ -26,7 +26,7 @@ class SalesforceSync
   REQUIRED_FIELDS = %w[Id FirstName LastName].freeze
   SELECT_FIELDS = [*REQUIRED_FIELDS, *PHONE_FIELDS, *EMAIL_FIELDS, *OCAT_DATE_FIELDS, INTRO_CALL_DATE_FIELD, INTRO_CALL_RSVP_FIELD,
                    INTRO_CALL_MISSED_FIELD, OCAT_RSVP_FIELD].freeze
-  DEFAULT_CHAPTER_FIELDS = %w[Id Name City__c Country__c Creation_Stage__c Group_Description__c
+  DEFAULT_CHAPTER_FIELDS = %w[Id Name City__c Country__c Creation_Stage__c Group_Description__c SWC_Group_ID__c
                               Region__c State__c State_Province__c Web_City__c MALatitude__c MALongitude__c Group_Email__c Web_Chapter_Page__c].freeze
 
   def initialize
