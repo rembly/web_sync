@@ -138,7 +138,7 @@ class SalesforceZoomSync
   end
 
   def add_meeting_participants(meeting_participants)
-    participants = valid_intro_call_users(meeting_participants)
+    participants = valid_intro_call_users(meeting_participants.dig('participants'))
     @log.debug('No intro call participants to sync') && return unless participants.any?
     intro_call_date = participants.try(:first).dig('join_time')&.to_datetime&.localtime&.to_date
     matched_email = update_zoom_attendees(participants, intro_call_date, 'Intro Call Attendees', SalesforceSync::INTRO_CALL_DATE_FIELD)
