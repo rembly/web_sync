@@ -10,4 +10,8 @@ class MysqlConnection
    def self.get_connection
       Mysql2::Client.new(DATABASE_CONFIG[ENV['ENVIRONMENT'].to_s])
    end
+
+   def self.endorse_staging_connection
+      Mysql2::Client.new(DATABASE_CONFIG['endorse_staging'])
+   end
 end

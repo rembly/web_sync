@@ -4,6 +4,7 @@ require 'json'
 require 'active_support/all'
 require_relative 'web_sync/oauth_token'
 require_relative 'web_sync/mysql_connection'
+require 'pry'
 
 # Interact with Google API
 
@@ -11,10 +12,9 @@ class GoogleSync
    APPLICATION_NAME = ENV['GOOGLE_APP_NAME']
    LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync_endorsers.log'))
    ENDORSER_SHEET_ID = ENV['GOOGLE_ENDORSER_SHEET_ID']
-   ENDORSER_DATA_RANGE = 'Sheet1!A2:N'.freeze
-   COLUMN_HEADING_RANGE = 'Sheet1!A1:N1'.freeze
-   COLUMN_HEADINGS = ['First Name', 'Last Name', 'Title', 'Email', 'Phone', 'Organization Name',
-                     'Website URL', 'Address1', 'Address2', 'City', 'State', 'Zip', 'Type', 'Vetted?']
+   ENDORSER_DATA_RANGE = 'Ready for Web!A2:AE'.freeze
+   COLUMN_HEADING_RANGE = 'Ready for Web!A1:AE1'.freeze
+   COLUMN_HEADINGS = ['Submitted Date','Completion Time','Completion Status',"I'm Endorsing As...",'First Name ','Last Name','Title','Email','Phone','Organization Name','Organization Name','Website URL','Address Line 1','Address Line 1','Address Line 2','City','State','Postal Code','Organization Type','# of U.S. employees','Population','Comments (not required)','Please confirm','Response Url','Referrer','Ip Address','Unprotected File List','Reviewer','Status','Notes','Featured Endorser']
    WP_ENDORSER_TABLE = 'bill_endorsers'
 
    attr_accessor :google_client
@@ -24,21 +24,22 @@ class GoogleSync
    def initialize
       @token = OauthToken.google_service_token
       @google_client = initialize_google_client(@token)
-      @wp_client = MysqlConnection.get_connection
+      # @wp_client = MysqlConnection.get_connection
+      @wp_client = MysqlConnection.endorse_staging_connection
    end
 
    def sync_endorsers
       return unless valid_data_columns?
 
-      current_endorsers = get_vetted_endorsers
+      current_endorsers = get_current_endorser_data.map(&method(:endorser_row))
       clear_wp_endorsers
       
       begin
          wp_client.query(<<-INSERT)
-            INSERT INTO #{WP_ENDORSER_TABLE}(first_name, last_name, title, email, phone, organization_name,
-               website_url, address1, address2, city, state, zip, type, vetted, created_at)
+            INSERT INTO #{WP_ENDORSER_TABLE}(first_name, last_name, title, organization_name,
+               website_url, city, state, postal_code, organization_type)
             VALUES
-               #{current_endorsers.map{|endorser_row| "('#{endorser_row.join("','")}', NOW())"}.join(',')}
+               #{current_endorsers.map{|endorser_row| "('#{endorser_row.join("','")}')"}.join(',')}
          INSERT
          
          LOG.info("Synchronized #{current_endorsers.size} endorsers to Wordpress")
@@ -46,6 +47,19 @@ class GoogleSync
          LOG.error("Unable to synchronize endorsers to Wordpress: #{e.message}")
          LOG.error(e.backtrace.inspect)
       end
+   end
+
+   def endorser_row(row)
+      endorsing_as = row[3]
+      org_type = row[18]
+      first_name, last_name, title = row[4], row[5], row[6]
+      org_name = row[9].present? ? row[9] : row[10]
+      website_url = row[11]
+      city, state, zip = row[15], row[16], row[17]
+      comments = row[21]
+      # submitted_at = row[0]
+
+      [first_name, last_name, title, org_name, website_url, city, state, zip, org_type]
    end
 
    def clear_wp_endorsers
