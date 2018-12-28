@@ -182,6 +182,8 @@ build-iPhoneSimulator/
 .env
 .env_prod
 .env_prod*
+.env_dev
+.env_dev*
 config/smtp_config.yml
 config/database.yml
 ### Rails template
