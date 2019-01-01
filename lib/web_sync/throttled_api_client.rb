@@ -13,6 +13,7 @@ class ThrottledApiClient
   attr_accessor :queue_consumer
   attr_reader :call_queue
   attr_reader :api_token
+  attr_reader :time_between_calls
 
   def initialize(api_url:, max_calls_sec: DEFAULT_API_RATE, time_between_calls: DEFAULT_API_RATE, token_method:, logger:)
     @call_queue = Queue.new
