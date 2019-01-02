@@ -7,7 +7,11 @@ require_relative '../salesforce_sync'
 
 class SwcForumSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'swc_forum.log'))
-  POSTED_BY_MESSAGE = '<p><i>Originally Posted By: %s</i></p>'
+  # map old forum topics and posts to new. Keep a log of conversion
+  FORUM_MAP = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'swc_forum_map.log'))
+  POSTED_BY_MESSAGE = "<p class='forum_disclaimer'><i>Originally posted by: %s</i></p>"
+  TOPIC_BY_MESSAGE = "<p class='forum_disclaimer'><i>Originally posted on old community by: %s. Links may no longer be active</i></p>"
+  TOPIC_DISCLAIMER = "<p class='forum_disclaimer'><i>Originally posted on old community. Links may no longer be active.</i></p>"
   DEFAULT_POST_OWNER = 1
 
   attr_accessor :api
@@ -21,7 +25,23 @@ class SwcForumSync
     'the-politics' => 58,
     'endorsements-1' => 61,
     'media-and-outreach' => 59,
-    'general-other-questions' => 33
+    'general-other-questions' => 928,
+    'latest-headlines' => 1840,
+    'reports-studies-news' => 1840,
+    'email-blast' => 928,
+    'general-discussion' => 928,
+    'renewables' => 928,
+    'fossil-fuels' => 928,
+    'nuclear' => 928,
+    'impacts' => 928,
+    'mitigation-and-adaptation' => 928,
+    'cfd' => 928,
+    'other-policy' => 928,
+    'economics' => 928,
+    'lobbying' => 58,
+    'media' => 59,
+    'outreach-discussion' => 60,
+    'development' => 62,
   }
 
   def initialize
@@ -30,6 +50,15 @@ class SwcForumSync
     @sf = SalesforceSync.new
     @wp = MysqlConnection.get_connection
     @user_map = get_user_map
+  end
+
+  def sync_forums
+    # set which forums to sync here
+    forums = %w[the-policy the-politics endorsements-1 media-and-outreach general-other-questions latest-headlines
+      reports-studies-news email-blast general-discussion renewables fossil-fuels nuclear impacts mitigation-and-adaptation
+      cfd other-policy economics lobbying media outreach-discussion development]
+    
+    forums.each(&method(:sync_forum_posts))
   end
 
   def sync_forum_posts(forum_name)
@@ -57,7 +86,8 @@ class SwcForumSync
               'body': body, 'locked': false, 'type': 'standard', 'created': row['topic_date'] }
     LOG.info('Create Post: ' + post.as_json.to_s)
 
-    res = @api.post(endpoint: 'forums/posts', data: post)
+    new_post = @api.post(endpoint: 'forums/posts', data: post)
+    FORUM_MAP.info("POST,#{row['post_id']},#{JSON.parse(new_post.body).dig('postId')}")
     sleep @api.time_between_calls
   end
 
@@ -65,7 +95,8 @@ class SwcForumSync
     swc_user_id = @user_map[row.dig('topic_user_name')]
     swc_user_id = swc_user_id || DEFAULT_POST_OWNER
 
-    body = swc_user_id == DEFAULT_POST_OWNER ? (POSTED_BY_MESSAGE % row['topic_user_name']) + row['post_content'] : row['post_content']
+    topic_disclaimer = swc_user_id == DEFAULT_POST_OWNER ? (TOPIC_BY_MESSAGE % row['topic_user_name']) : TOPIC_DISCLAIMER
+    body = topic_disclaimer + row['post_content']
 
     topic = { 'categoryId': category_id, 'groupId': 0, 'userId': swc_user_id, 'title': row['topic_name'],
               'body': body, 'locked': false, 'type': 'standard', 'created': row['topic_date'] }
@@ -74,7 +105,9 @@ class SwcForumSync
     new_topic = @api.post(endpoint: 'forums/topics', data: topic)
     #  => "{\n    \"topicId\": \"315\",\n    \"categoryId\": \"33\",\n    \"groupId\": \"0\",\n    \"title\": \"API+post\",\n    \"userId\": \"26\",\n    \"time\": \"2018-12-27T14:11:00-08:00\",\n    \"views\": \"0\",\n    \"replies\": \"0\",\n    \"locked\": false,\n    \"type\": \"standard\",\n    \"firstPostId\": \"0\",\n    \"firstPostUserId\": \"0\",\n    \"lastPostId\": \"0\",\n    \"lastPostUserId\": \"0\",\n    \"lastPostSubject\": \"\",\n    \"lastPostTime\": null,\n    \"hidden\": false,\n    \"statusId\": \"0\"\n}" 
     sleep @api.time_between_calls
-    JSON.parse(new_topic.body).dig('topicId')
+    new_id = JSON.parse(new_topic.body).dig('topicId')
+    FORUM_MAP.info("TOPIC,#{row['topic_id']},#{new_id}")
+    return new_id
   end
 
   def get_user_map
