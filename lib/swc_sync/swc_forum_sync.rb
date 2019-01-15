@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 require 'active_support/all'
+require 'pry'
 require_relative '../web_sync/json_web_token'
 require_relative '../web_sync/mysql_connection'
 require_relative '../web_sync/throttled_api_client'
@@ -10,8 +11,8 @@ class SwcForumSync
   # map old forum topics and posts to new. Keep a log of conversion
   FORUM_MAP = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'swc_forum_map.log'))
   POSTED_BY_MESSAGE = "<p class='forum_disclaimer'><i>Originally posted by: %s</i></p>"
-  TOPIC_BY_MESSAGE = "<p class='forum_disclaimer'><i>Originally posted on old community by: %s. Links may no longer be active</i></p>"
-  TOPIC_DISCLAIMER = "<p class='forum_disclaimer'><i>Originally posted on old community. Links may no longer be active.</i></p>"
+  TOPIC_BY_MESSAGE = "<p class='forum_disclaimer'><i>Originally posted on old Community by: %s. Links may no longer be active</i></p>"
+  TOPIC_DISCLAIMER = "<p class='forum_disclaimer'><i>Originally posted on old Community. Links may no longer be active.</i></p>"
   DEFAULT_POST_OWNER = 1
 
   attr_accessor :api
@@ -20,28 +21,28 @@ class SwcForumSync
   attr_accessor :user_map
 
   # map old to new forum categories. WP forum_slug => swc forum category id
+  # verify staging/live IDs before deployment: 'the-policy' => 1953, 'the-politics' => 1954, 
+  # 'endorsements-1' => 1955, 'media-and-outreach' => 1956, 'general-other-questions' => 1957,
   FORUM_CATEGORY_MAP = {
-    'the-policy' => 1904,
+    'the-policy' => 1952,
     'the-politics' => 58,
     'endorsements-1' => 61,
     'media-and-outreach' => 59,
     'general-other-questions' => 928,
     'latest-headlines' => 1840,
     'reports-studies-news' => 1840,
-    'email-blast' => 928,
-    'general-discussion' => 928,
-    'renewables' => 928,
-    'fossil-fuels' => 928,
-    'nuclear' => 928,
-    'impacts' => 928,
-    'mitigation-and-adaptation' => 928,
-    'cfd' => 928,
-    'other-policy' => 928,
-    'economics' => 928,
+    'email-blast' => 928, 'general-discussion' => 928,
+    'renewables' => 928, 'fossil-fuels' => 928, 'nuclear' => 928, 'impacts' => 928,
+    'mitigation-and-adaptation' => 928, 'cfd' => 928, 'other-policy' => 928, 'economics' => 928,
     'lobbying' => 58,
-    'media' => 59,
+    'media' => 59, 'print-media' => 59, 'television' => 59, 'radio' => 59, 'social-media' => 59,
+    'lte-opportunities' => 59, 'published-letters' => 59,
     'outreach-discussion' => 60,
-    'development' => 62,
+    'letter-writing' => 60, 'tabling' => 60, 'public-speaking' => 60, 'messaging' => 60,
+    'deniers' => 60, 'conservatives' => 60, 'inclusive-ccl' => 60, 'faith' => 60,
+    'educational-opportunities' => 60, 'online-education' => 60, 'panels-and-seminars' => 60, 'research' => 60, 
+    'development' => 62, 'group-development-1' => 62, 'fundraising' => 62,
+    'conference-roommates-and-lodging' => 1951,
   }
 
   def initialize
@@ -54,10 +55,15 @@ class SwcForumSync
 
   def sync_forums
     # set which forums to sync here
-    forums = %w[the-policy the-politics endorsements-1 media-and-outreach general-other-questions latest-headlines
-      reports-studies-news email-blast general-discussion renewables fossil-fuels nuclear impacts mitigation-and-adaptation
-      cfd other-policy economics lobbying media outreach-discussion development]
+    # on staging have synced endorsements-1
+    # forums = %w[the-policy the-politics media-and-outreach general-other-questions latest-headlines
+    #   reports-studies-news email-blast general-discussion renewables fossil-fuels nuclear impacts mitigation-and-adaptation
+    #   cfd other-policy economics lobbying media outreach-discussion development]
     
+    forums = %w[media print-media television radio social-media lte-opportunities published-letters outreach-discussion letter-writing 
+      tabling public-speaking messaging deniers conservatives inclusive-ccl faith educational-opportunities online-education panels-and-seminars 
+      research development group-development-1 fundraising conference-roommates-and-lodging]
+
     forums.each(&method(:sync_forum_posts))
   end
 
@@ -80,8 +86,14 @@ class SwcForumSync
     swc_user_id = @user_map[row.dig('post_user_name')]
     swc_user_id = swc_user_id || DEFAULT_POST_OWNER
 
-    body = swc_user_id == DEFAULT_POST_OWNER ? (POSTED_BY_MESSAGE % row['post_user_name']) + row['post_content'] : row['post_content']
+    disclaimer = ''
+    if swc_user_id == DEFAULT_POST_OWNER
+      disclaimer = TOPIC_BY_MESSAGE % row['topic_user_name']
+    elsif row.dig('post_content').to_s.include?('href')
+      disclaimer = TOPIC_DISCLAIMER
+    end
 
+    body = disclaimer + row['post_content']
     post = { 'categoryId': category_id, 'topicId': topic_id, 'groupId': 0, 'userId': swc_user_id, 'subject': 'Re: ' + row['topic_name'],
               'body': body, 'locked': false, 'type': 'standard', 'created': row['topic_date'] }
     LOG.info('Create Post: ' + post.as_json.to_s)
