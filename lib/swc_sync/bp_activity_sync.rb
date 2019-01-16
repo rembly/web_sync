@@ -18,20 +18,21 @@ class BpActivitySync
   MAX_SUBJECT_LENGTH = 75
 
   # map group slug on WP to [group_id, forum_category]
+  # 'ny-nj-pa-coordinating': 1,
+  # 'ccl-book-club': 1, # 'cclsierra-club': 1, # 'solo-cclers': 1,
+  # 'dc-lodging-for-ccl-lobbyists': 1, # 'team-nuclear': 1, # 'healthy-climate-team': 1,
+  # 'millennial-generation': 1, # 'nocal-moc-liaisons': 1, # 'pathway-to-paris': 1, # 'proactive-outreach': 1,
   FORUM_CATEGORY_MAP = {
     'group-leaders' => [1767,1798],
     'regional-coordinators' => [946,977],
-    # 'ny-nj-pa-coordinating': 1,
     'liaisons-1475069368' => [998,1029],
     'ccl-visuals-graphics-art-and-more' => [960,991],
     'clr-caucus' => [965,996], # sub group???? consevative media
     'presenters-schedulers' => [973,1004],
     'team-oil' => [978,1009],
-    # 'ccl-book-club': 1, # 'cclsierra-club': 1,
     'agriculture-team' => [968,999],
     'rural-electric-cooperatives' => [974,1005],
     'rotary-service-clubs' => [948,979],
-    # 'solo-cclers': 1,
     'climate-change-national-security' => [962,993],
     'climate-peer-support' => [972,1003],
     'coal-country-climate-heroes-578105675' => [964,995],
@@ -39,7 +40,6 @@ class BpActivitySync
     'state-carbon-taxes' => [976,1007],
     'unitarian-universalists' => [979,1010],
     'social-media' => [975,1006],
-    # 'dc-lodging-for-ccl-lobbyists': 1, # 'team-nuclear': 1,
     'climate-and-healthcare-team' => [961,992],
     'spanish-language' => [995,1026],
     'catholics' => [958,989],
@@ -49,12 +49,10 @@ class BpActivitySync
     'group-development-coaches' => [1769,1806],
     'trainers' => [1770,1807],
     'motivational-interviewing-738232779' => [970,1001],
-    # 'millennial-generation': 1, # 'nocal-moc-liaisons': 1, # 'pathway-to-paris': 1, # 'proactive-outreach': 1,
     '100-faith-leaders' => [967,998],
     'endorsement-project' => [1771,1808],
     'labor-outreach' => [969,1000],
-    'engaging-youth' => [988/1019],
-    # 'healthy-climate-team': 1,
+    'engaging-youth' => [988,1019],
     'environmental-justice' => [953,984], # group rename
     'lds-mormon' => [954,985],
     'presbyterians' => [997,1028],
