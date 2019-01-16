@@ -12,7 +12,7 @@ class BpActivitySync
   FORUM_MAP = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'swc_group_forum_map.log'))
   POSTED_BY_MESSAGE = "<p class='forum_disclaimer'><i>Originally posted in old Community by: %s. Links and images may not work correctly.</i></p>"
   TOPIC_TITLE = "Old Community Wall Posts"
-  TOPIC_BODY = "<h3>These posts have been migrated over from old community</h3><p><i>Please note that links and images may not work correctly</i></p>"
+  TOPIC_BODY = "<h3>Originally posted on old community</h3><p><i>Please note that links and images may not work correctly</i></p>"
   POST_DISCLAIMER = "<p class='forum_disclaimer'><i>Originally posted on old Community. Links may no longer be active.</i></p>"
   DEFAULT_POST_OWNER = 1
   MAX_SUBJECT_LENGTH = 75
@@ -89,7 +89,7 @@ class BpActivitySync
   end
 
   def sync_walls
-    to_sync = ['climate-change-national-security']
+    to_sync = ['agriculture-team']
     to_sync.each(&method(:sync_wall_posts))
   end
 
@@ -102,21 +102,24 @@ class BpActivitySync
     # TODO maybe make a new topic for old group posts? Maybe grab group members and test that before making a post
     # and make as admin if not. Doesn't look like you can post without either being an admin or member of the group.
 
+    group_members = api.call(endpoint: "groups/#{group_id}/members").to_a.map{|member| member.dig('userId')}
+
     posts.each do |post|
       # save all of the posts for the topic except the first one
       # save_post(forum_category_id, topic_id, group_id, post)
-      topic_id = save_topic(forum_category_id, group_id, post)
+      topic_id = save_topic(forum_category_id, group_id, post, group_members)
 
       # if there are comments save those
       comments[post['post_id']].to_a.each do |comment|
-        save_post(forum_category_id, topic_id, group_id, comment, post)
+        save_post(forum_category_id, topic_id, group_id, comment, post, group_members)
       end
     end
   end
 
-  def save_post(category_id, topic_id, group_id, row, parent)
+  def save_post(category_id, topic_id, group_id, row, parent, members)
     swc_user_id = @user_map[row.dig('post_user')]
-    swc_user_id = swc_user_id || DEFAULT_POST_OWNER
+    swc_user_id = (swc_user_id && members.include?(swc_user_id.to_s)) || DEFAULT_POST_OWNER
+    # swc_user_id = swc_user_id || DEFAULT_POST_OWNER
 
     disclaimer = ''
     if swc_user_id == DEFAULT_POST_OWNER
@@ -138,9 +141,9 @@ class BpActivitySync
     sleep @api.time_between_calls
   end
 
-  def save_topic(category_id, group_id, row)
+  def save_topic(category_id, group_id, row, members)
     swc_user_id = @user_map[row.dig('post_user')]
-    swc_user_id = swc_user_id || DEFAULT_POST_OWNER
+    swc_user_id = (swc_user_id && members.include?(swc_user_id.to_s)) || DEFAULT_POST_OWNER
 
     disclaimer = ''
     if swc_user_id == DEFAULT_POST_OWNER
@@ -152,18 +155,23 @@ class BpActivitySync
     body = disclaimer + row['content']
     title = row['content'].size >= MAX_SUBJECT_LENGTH ? row['content'][0..MAX_SUBJECT_LENGTH] + '...' : row['content']
     topic = { 'categoryId': category_id, 'groupId': group_id, 'userId': swc_user_id, 'title': title,
-              'body': TOPIC_BODY, 'locked': false, 'type': 'standard', 'created': row['date_recorded'].iso8601 }
+              'body': body, 'locked': false, 'type': 'standard', 'created': row['date_recorded'].iso8601 }
     LOG.info('Create Topic: ' + topic.as_json.to_s)
 
     new_topic = @api.post(endpoint: 'forums/topics', data: topic)
     #  => "{\n    \"topicId\": \"315\",\n    \"categoryId\": \"33\",\n    \"groupId\": \"0\",\n    \"title\": \"API+post\",\n    \"userId\": \"26\",\n    \"time\": \"2018-12-27T14:11:00-08:00\",\n    \"views\": \"0\",\n    \"replies\": \"0\",\n    \"locked\": false,\n    \"type\": \"standard\",\n    \"firstPostId\": \"0\",\n    \"firstPostUserId\": \"0\",\n    \"lastPostId\": \"0\",\n    \"lastPostUserId\": \"0\",\n    \"lastPostSubject\": \"\",\n    \"lastPostTime\": null,\n    \"hidden\": false,\n    \"statusId\": \"0\"\n}" 
     sleep @api.time_between_calls
     if new_topic.class == Hash
-      binding.pry
+      # binding.pry
       p new_topic
     end
-    new_id = JSON.parse(new_topic.body).dig('topicId')
-    FORUM_MAP.info("TOPIC,#{row['post_id']},#{new_id}")
+
+    begin
+      new_id = JSON.parse(new_topic.body).dig('topicId')
+      FORUM_MAP.info("TOPIC,#{row['post_id']},#{new_id}")
+    rescue Exception => e
+      LOG.error("UNABLE to SYNC Topic: #{topic}. Error: #{new_topic}")
+    end
     return new_id
   end
 

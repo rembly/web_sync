@@ -3,6 +3,7 @@
 require 'rest-client'
 require 'json'
 require 'active_support/all'
+require 'pry'
 
 # TODO: this needs tweaked for paging in order to be used outside of SWC
 class ThrottledApiClient
