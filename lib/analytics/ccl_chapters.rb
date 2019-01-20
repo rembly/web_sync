@@ -1,11 +1,11 @@
-require_relative 'salesforce_sync' 
+require_relative '../salesforce_sync' 
 require 'json'
 require 'pry'
 require 'csv'
 
 class CclChapters
-   FILE_LOCATION = File.join(File.dirname(__FILE__), '..', 'data', 'chapter_locations.geojson')
-   MISSING_LOCATION_CSV = File.join(File.dirname(__FILE__), '..', 'data', 'missing_locations.csv')
+   FILE_LOCATION = File.join(File.dirname(__FILE__), '..', '..', 'data', 'chapter_locations.geojson')
+   MISSING_LOCATION_CSV = File.join(File.dirname(__FILE__), '..', '..', 'data', 'missing_locations.csv')
    attr_accessor :sf
 
    def initialize
