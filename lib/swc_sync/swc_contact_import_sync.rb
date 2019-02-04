@@ -11,8 +11,14 @@ class SwcContactImportSync
   CONTACTS_TO_CLEAR_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', '..', 'data', 'contact_import_to_clear.json')
   PROD_USERS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'external_reference_users.json')
   STAGING_USERS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'all_staging_users_2_1.json')
+  MAX_CALLS_PER_SECOND = 0.4
   GROUP_CHAPTER_CATEGORY = 4
   ACTION_TEAM_CATEGORY = 5
+
+  # Country_Full_Name__c: 331, 
+  PROFILE_FIELD_MAP = {Congressional_District_Short_Name__c: 323, 
+    Region__c: 324, Group_Name__c: 322, MailingPostalCode: 329, 
+    MailingState: 349, MailingCity: 348}
 
   attr_accessor :api
   attr_accessor :sf
@@ -44,6 +50,8 @@ class SwcContactImportSync
 
     # which users are not already in their group
     need_tied = sf_groups.select{|id, group_id| user_groups.dig(id.to_s).to_a.exclude?(group_id.to_s)}
+    p "#{need_tied.size} users need updated with group info.."
+    LOG.info("#{need_tied.size} users need updated with group info..")
 
     need_tied.each do |swc_id, group_id|
       api.post(endpoint: "groups/#{group_id}/members", data: {userId: swc_id, status: 1})
@@ -79,6 +87,24 @@ class SwcContactImportSync
     get_users.find { |u| u['emailAddress'] == email }.try(:dig, 'userId')
   end
 
+  def set_all_profile_fields
+    sf_users = get_sf_community_users
+    sf_users.each{|user| set_user_profile_fields(user); sleep MAX_CALLS_PER_SECOND}
+  end
+
+  def set_user_profile_fields(sf_user)
+    profileFields = PROFILE_FIELD_MAP.select{|attr, _field_id| sf_user.send(attr).present?}
+                        .map{|attr, field_id| {id: field_id, data: CGI.escape(sf_user.send(attr))}}
+    profileFields << {id: 331, data: 0} if sf_user.Country_Full_Name__c == "United States"
+    update = {userId: sf_user.SWC_User_ID__c.to_i, username: sf_user.FirstName + ' ' + sf_user.LastName, 
+      emailAddress: sf_user.Email.to_s.gsub('+', '%2B'), firstName: sf_user.FirstName, lastName: sf_user.LastName,
+      profileFields: profileFields}
+    results = api.put(endpoint: "users/#{sf_user.SWC_User_ID__c.to_i.to_s}", data: update)
+    LOG.info("#{sf_user.SWC_User_ID__c.to_i} profile fields updated")
+    binding.pry if sf_user.SWC_User_ID__c.to_i == 0
+    results
+  end
+
   def clear_contacts
     # to_clear = JSON.parse(File.read(CONTACTS_TO_CLEAR_FILE_LOCATION))
     # emails = to_clear.map{|u| u['*_email_address']}
@@ -96,9 +122,10 @@ class SwcContactImportSync
   def get_sf_community_users
     return @sf_contacts if @sf_contacts
     @sf_contacts = sf.client.query(<<-QUERY)
-      SELECT Id, FirstName, LastName, Email, SWC_User_ID__c, CCL_Community_Username__c, Group_del__c, Group_del__r.SWC_Group_ID__c
+      SELECT Id, FirstName, LastName, Email, SWC_User_ID__c, CCL_Community_Username__c, Group_del__c, Group_del__r.SWC_Group_ID__c,
+        Congressional_District_Short_Name__c, Region__c, Group_Name__c, MailingPostalCode, Country_Full_Name__c, MailingState, MailingCity 
       FROM Contact 
-      WHERE CCL_Community_Username__c <> '' AND SWC_User_ID__c <> 0 AND Group_del__c <> '' 
+      WHERE CCL_Community_Username__c <> '' AND SWC_User_ID__c <> 0 AND Group_del__c <> '' AND SWC_User_ID__c <> null
         AND Group_del__r.SWC_Group_ID__c <> 0 AND Group_del__r.SWC_Group_ID__c <> null
     QUERY
     @sf_contacts

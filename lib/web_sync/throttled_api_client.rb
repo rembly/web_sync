@@ -63,6 +63,15 @@ class ThrottledApiClient
     }
   end
 
+  def put(endpoint:, data:, params: {})
+    base_uri = [URI.join(@api_url, endpoint).to_s, params.to_query].compact.join('?')
+    begin
+      RestClient.put(base_uri, data.to_json, content_type: :json, accept: :json, Authorization: "Bearer #{@api_token}")
+    rescue RestClient::ExceptionWithResponse => e
+      return handle_response(e.response)
+    end
+  end
+
   # create an account and send email
   def post(endpoint:, data:, params: {})
     base_uri = [URI.join(@api_url, endpoint).to_s, params.to_query].compact.join('?')
@@ -107,6 +116,7 @@ class ThrottledApiClient
     request_uri = URI.parse(next_page_url.captures.first)
     endpoint = [request_uri.path.split('/').last, request_uri.query].join('?')
     sleep @time_between_calls
+    # p "fetching page #{endpoint}"
     call(endpoint: endpoint)
   end
 
