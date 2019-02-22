@@ -16,7 +16,7 @@ class SwcResourceMap
   RESOURCE_MAP_SHEET_ID = ENV['GOOGLE_SWC_RESOURCE_SHEET_ID']
   TRAINING_MAP_DATA_RANGE = 'Examples!A2:H'.freeze
   RESOURCE_MAP_DATA_RANGE = 'ResourceCategories!A2:C'.freeze
-  ORPHAN_MAP_DATA_RANGE = 'Orphans!A2:B'.freeze
+  ORPHAN_MAP_DATA_RANGE = 'Orphans!A2:C'.freeze
 
   TOPIC_ROW = 0
   TRAINING_ROW = 1
@@ -39,7 +39,7 @@ class SwcResourceMap
     training_site_map = build_training_sitemap
     File.open(TRAINING_SITEMAP_JSON, 'w'){|f| f.puts(training_site_map.to_json)}
 
-    resource_nav = "<div class='training_nav ui-helper-hidden'>"
+    resource_nav = "<div class='back-to training_nav ui-helper-hidden'><a href='/topics'>&lt; Back to Topics</a></div><div class='sidemenu'><div class='training_nav ui-helper-hidden'>"
     training_string = training_site_map.reduce(resource_nav) do |str, (category, topics)|
       str += "<div id='#{section_class(category)}_accordion' class='nav_category #{section_class(category)} ui-helper-hidden'>"
       str += "<div class='nav_category_label'>#{category}</div>"
@@ -47,27 +47,27 @@ class SwcResourceMap
         str += "<div class='nav_category_topic topic_#{section_class(topic)}' data-training-ur='#{topic_data[:url]}'>"
         str += "<button class='btn btn-link topic-toggle collapsed' aria-expanded='true' data-target='##{section_class(topic)}' data-toggle='collapse'>#{topic}</button>"
         str += "<div id='#{section_class(topic)}' class='collapse' data-parent='##{section_class(category)}_accordion'>"
-        topic_data[:training].each{|training| str += "<div class='training_link'><a href='#{training[:url]}' target='_blank'>#{training[:name]}</a></div>" }
+        topic_data[:training].each{|training| str += "<div class='training_link'><a href='#{training[:url]}'>#{training[:name]}</a></div>" }
         str += '</div>'
         str += '</div>'
       end
       str += '</div>'
     end
-    training_string += '</div>'
+    training_string += '</div></div>'
     
     resource_site_map = build_resource_sitemap
     File.open(RESOURCE_SITEMAP_JSON, 'w'){|f| f.puts(resource_site_map.to_json)}
     
-    training_string += "<div id='resource_accordion' class='resource_nav ui-helper-hidden'>"
+    training_string += "<div class='back-to resource_nav ui-helper-hidden'><a href='/resources'>&lt; Back to Resources</a></div><div class='sidemenu'><div id='resource_accordion' class='resource_nav ui-helper-hidden'>"
     site_string = resource_site_map.reduce(training_string) do |str, (category, pages)|
       str += "<div class='resource_link'>"
       str += "<button class='btn btn-link topic-toggle collapsed' aria-expanded='true' data-target='##{section_class(category)}' data-toggle='collapse'>#{category}</button>"
       str += "<div id='#{section_class(category)}' class='collapse' data-parent='#resource_accordion'>"
-      pages.each{|resource| str += "<div class='training_link'><a href='#{resource[:url]}' target='_blank'>#{resource[:name]}</a></div>" }
+      pages.each{|resource| str += "<div class='training_link'><a href='#{resource[:url]}'>#{resource[:name]}</a></div>" }
       str += '</div>'
       str += '</div>'
     end
-    site_string += '</div>'
+    site_string += '</div></div>'
 
     File.open(SITEMAP_FILE, 'w'){|f| f.puts(site_string)}
   end
@@ -90,13 +90,28 @@ class SwcResourceMap
     end
 
     # add orphan data
-    site_map['Other Training'] = {}
-    site_map['Other Training']['Other Training'] = {url: '', training: [], resources: []}
-    get_orphan_map_data.each do |row|
-      next if row[1].to_s.exclude?('/')
-      site_map['Other Training']['Other Training'][:training] << {name: row[0], url: nav_link(row[1])}
-    end
+    site_map = other_map(site_map)
     return site_map
+  end
+
+  def other_map(site_map)
+    site_map['Other Training'] = {}
+
+    orphans = get_orphan_map_data
+
+    current_topic = ""
+    orphans.each do |row|
+      if row[0].present?
+        current_topic = row[TOPIC_ROW]
+        site_map['Other Training'][current_topic] = {url: '', training: [], resources: []}
+      elsif row[1].present? && row[2].present?
+        site_map['Other Training'][current_topic][:training] << {name: row[1], url: nav_link(row[2])}
+      else
+        break
+      end
+    end
+
+    site_map
   end
 
   # RESOURCE SITEMAP
