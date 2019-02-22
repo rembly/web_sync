@@ -54,17 +54,13 @@ class SwcForumSync
   end
 
   def sync_forums
-    # set which forums to sync here
-    # on staging have synced endorsements-1
-    # forums = %w[the-policy the-politics media-and-outreach general-other-questions latest-headlines
-    #   reports-studies-news email-blast general-discussion renewables fossil-fuels nuclear impacts mitigation-and-adaptation
-    #   cfd other-policy economics lobbying media outreach-discussion development]
-    
-    forums = %w[media print-media television radio social-media lte-opportunities published-letters outreach-discussion letter-writing 
-      tabling public-speaking messaging deniers conservatives inclusive-ccl faith educational-opportunities online-education panels-and-seminars 
-      research development group-development-1 fundraising conference-roommates-and-lodging]
+    forums = %w[conference-roommates-and-lodging]
+    # forums = %w[media-and-outreach general-other-questions latest-headlines reports-studies-news email-blast general-discussion renewables fossil-fuels nuclear impacts
+    #   mitigation-and-adaptation cfd other-policy economics lobbying media print-media television radio social-media lte-opportunities published-letters
+    #   outreach-discussion letter-writing tabling public-speaking messaging deniers conservatives inclusive-ccl faith educational-opportunities online-education panels-and-seminars research 
+    #   development group-development-1 fundraising]
 
-    forums.each(&method(:sync_forum_posts))
+    forums.each{|forum_name| sync_forum_posts(forum_name); @api.reset_token;}
   end
 
   def sync_forum_posts(forum_name)
@@ -99,7 +95,7 @@ class SwcForumSync
     LOG.info('Create Post: ' + post.as_json.to_s)
 
     new_post = @api.post(endpoint: 'forums/posts', data: post)
-    FORUM_MAP.info("POST,#{row['post_id']},#{JSON.parse(new_post.body).dig('postId')}")
+    FORUM_MAP.info("POST,category_id: #{category_id}, wp_post_id: #{row['post_id']}, new_post_id: #{JSON.parse(new_post.body).dig('postId')}")
     sleep @api.time_between_calls
   end
 
@@ -118,7 +114,7 @@ class SwcForumSync
     #  => "{\n    \"topicId\": \"315\",\n    \"categoryId\": \"33\",\n    \"groupId\": \"0\",\n    \"title\": \"API+post\",\n    \"userId\": \"26\",\n    \"time\": \"2018-12-27T14:11:00-08:00\",\n    \"views\": \"0\",\n    \"replies\": \"0\",\n    \"locked\": false,\n    \"type\": \"standard\",\n    \"firstPostId\": \"0\",\n    \"firstPostUserId\": \"0\",\n    \"lastPostId\": \"0\",\n    \"lastPostUserId\": \"0\",\n    \"lastPostSubject\": \"\",\n    \"lastPostTime\": null,\n    \"hidden\": false,\n    \"statusId\": \"0\"\n}" 
     sleep @api.time_between_calls
     new_id = JSON.parse(new_topic.body).dig('topicId')
-    FORUM_MAP.info("TOPIC,#{row['topic_id']},#{new_id}")
+    FORUM_MAP.info("TOPIC,category_id: #{category_id}, wp_topic_id: #{row['topic_id']}, new_topic_id: #{new_id}")
     return new_id
   end
 

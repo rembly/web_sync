@@ -23,6 +23,7 @@ class BpActivitySync
   # 'dc-lodging-for-ccl-lobbyists': 1, # 'team-nuclear': 1, # 'healthy-climate-team': 1,
   # 'millennial-generation': 1, # 'nocal-moc-liaisons': 1, # 'pathway-to-paris': 1, # 'proactive-outreach': 1,
   FORUM_CATEGORY_MAP = {
+    'agriculture-team' => [968,999],
     'group-leaders' => [1767,1798],
     'regional-coordinators' => [946,977],
     'liaisons-1475069368' => [998,1029],
@@ -30,7 +31,6 @@ class BpActivitySync
     'clr-caucus' => [965,996], # sub group???? consevative media
     'presenters-schedulers' => [973,1004],
     'team-oil' => [978,1009],
-    'agriculture-team' => [968,999],
     'rural-electric-cooperatives' => [974,1005],
     'rotary-service-clubs' => [948,979],
     'climate-change-national-security' => [962,993],
@@ -54,7 +54,7 @@ class BpActivitySync
     'labor-outreach' => [969,1000],
     'engaging-youth' => [988,1019],
     'environmental-justice' => [953,984], # group rename
-    'lds-mormon' => [954,985],
+    'lds-mormon' => [954,985], # HERE
     'presbyterians' => [997,1028],
     'business-climate-leaders' => [986,1017],
     'action-team-leaders' => [1878,1940],
@@ -87,15 +87,27 @@ class BpActivitySync
   end
 
   def sync_walls
-    to_sync = ['agriculture-team']
-    to_sync.each(&method(:sync_wall_posts))
+    # to_sync = ['agriculture-team'] # to_sync = ['jewish-action-team'] # to_sync = ['chinese-action-team', 'quakers']
+    # to_sync = ['broadcast-media', 'climate-reality-leadership-corp', 'evangelical-christian-action-team', 'strategic-planning', 'episcopal-action-team']
+    # to_sync = ['biking-for-climate-action', 'progressive-outreach', 'lgbtqa-climate', 'print-media', 'presbyterians', 'business-climate-leaders', 'action-team-leaders']
+
+    # to_sync = ['group-leaders', 'regional-coordinators', 'liaisons-1475069368', 'ccl-visuals-graphics-art-and-more',
+    #   'clr-caucus', 'presenters-schedulers', 'team-oil', 'rural-electric-cooperatives', 'rotary-service-clubs',
+    #   'climate-change-national-security', 'climate-peer-support', 'coal-country-climate-heroes-578105675', 'envoys',
+    #   'state-carbon-taxes', 'unitarian-universalists', 'social-media', 'climate-and-healthcare-team', 'spanish-language',
+    #   'catholics', 'ski-and-outdoor-industry', 'bahai', 'team-ocean',
+    #   'group-development-coaches', 'trainers', 'motivational-interviewing-738232779', '100-faith-leaders',
+    #   'endorsement-project', 'labor-outreach', 'engaging-youth', 'environmental-justice']
+
+    to_sync = ['group-leaders']
+    to_sync.each{|name| sync_wall_posts(name); @api.reset_token;}
   end
 
   def sync_wall_posts(group_wp_slug)
     group_id, forum_category_id = FORUM_CATEGORY_MAP[group_wp_slug]
     posts = get_wp_activity_posts(group_wp_slug)
     comments = get_wp_activity_post_comments(group_wp_slug).group_by{|post| post['parent_id']}
-    topic_id = create_wall_topic(forum_category_id, group_id, posts.first)
+    # topic_id = create_wall_topic(forum_category_id, group_id, posts.first)
 
     # TODO maybe make a new topic for old group posts? Maybe grab group members and test that before making a post
     # and make as admin if not. Doesn't look like you can post without either being an admin or member of the group.
@@ -115,8 +127,8 @@ class BpActivitySync
   end
 
   def save_post(category_id, topic_id, group_id, row, parent, members)
-    swc_user_id = @user_map[row.dig('post_user')]
-    swc_user_id = (swc_user_id && members.include?(swc_user_id.to_s)) || DEFAULT_POST_OWNER
+    swc_user_id = @user_map[row.dig('user_login')]
+    swc_user_id = (swc_user_id && members.include?(swc_user_id.to_s)) ? swc_user_id : DEFAULT_POST_OWNER
     # swc_user_id = swc_user_id || DEFAULT_POST_OWNER
 
     disclaimer = ''
@@ -125,48 +137,54 @@ class BpActivitySync
     elsif row.dig('content').to_s.include?('href')
       disclaimer = POST_DISCLAIMER
     end
+
     
     body = disclaimer + row['content']
     subject = 'Re: ' + parent['content'].size >= MAX_SUBJECT_LENGTH ? parent['content'][0..MAX_SUBJECT_LENGTH] + '...' : parent['content']
-
+    
     post = { 'categoryId': category_id, 'topicId': topic_id, 'groupId': group_id, 'userId': swc_user_id, 'subject': subject,
-              'body': body, 'locked': false, 'type': 'standard', 'created': row['date_recorded'].iso8601 }
-    LOG.info('Create Post: ' + post.as_json.to_s)
-
+      'body': body, 'locked': false, 'type': 'standard', 'created': row['date_recorded'].iso8601 }
+      LOG.info('Create Post: ' + post.as_json.to_s)
+      
+    binding.pry
     new_post = @api.post(endpoint: 'forums/posts', data: post)
-
-    FORUM_MAP.info("POST,#{row['post_id']},#{JSON.parse(new_post.body).dig('postId')}")
-    sleep @api.time_between_calls
-  end
-
-  def save_topic(category_id, group_id, row, members)
-    swc_user_id = @user_map[row.dig('post_user')]
-    swc_user_id = (swc_user_id && members.include?(swc_user_id.to_s)) || DEFAULT_POST_OWNER
-
-    disclaimer = ''
-    if swc_user_id == DEFAULT_POST_OWNER
-      disclaimer = POSTED_BY_MESSAGE % row['post_user']
-    elsif row.dig('content').to_s.include?('href')
-      disclaimer = POST_DISCLAIMER
+    binding.pry
+    
+    FORUM_MAP.info("POST,category_id: #{category_id}, topic_id: #{topic_id}, group_id: #{group_id}, 
+      wp_post_id: #{row['post_id']}, swc_new_post_id: #{JSON.parse(new_post.body).dig('postId')}")
+      sleep @api.time_between_calls
     end
-
-    body = disclaimer + row['content']
-    title = row['content'].size >= MAX_SUBJECT_LENGTH ? row['content'][0..MAX_SUBJECT_LENGTH] + '...' : row['content']
-    topic = { 'categoryId': category_id, 'groupId': group_id, 'userId': swc_user_id, 'title': title,
-              'body': body, 'locked': false, 'type': 'standard', 'created': row['date_recorded'].iso8601 }
-    LOG.info('Create Topic: ' + topic.as_json.to_s)
-
-    new_topic = @api.post(endpoint: 'forums/topics', data: topic)
-    #  => "{\n    \"topicId\": \"315\",\n    \"categoryId\": \"33\",\n    \"groupId\": \"0\",\n    \"title\": \"API+post\",\n    \"userId\": \"26\",\n    \"time\": \"2018-12-27T14:11:00-08:00\",\n    \"views\": \"0\",\n    \"replies\": \"0\",\n    \"locked\": false,\n    \"type\": \"standard\",\n    \"firstPostId\": \"0\",\n    \"firstPostUserId\": \"0\",\n    \"lastPostId\": \"0\",\n    \"lastPostUserId\": \"0\",\n    \"lastPostSubject\": \"\",\n    \"lastPostTime\": null,\n    \"hidden\": false,\n    \"statusId\": \"0\"\n}" 
+    
+    def save_topic(category_id, group_id, row, members)
+      swc_user_id = @user_map[row.dig('user_login')]
+      swc_user_id = (swc_user_id && members.include?(swc_user_id.to_s)) ? swc_user_id : DEFAULT_POST_OWNER
+      
+      disclaimer = ''
+      if swc_user_id == DEFAULT_POST_OWNER
+        disclaimer = POSTED_BY_MESSAGE % row['post_user']
+      elsif row.dig('content').to_s.include?('href')
+        disclaimer = POST_DISCLAIMER
+      end
+      
+      body = disclaimer + row['content']
+      title = row['content'].size >= MAX_SUBJECT_LENGTH ? row['content'][0..MAX_SUBJECT_LENGTH] + '...' : row['content']
+      topic = { 'categoryId': category_id, 'groupId': group_id, 'userId': swc_user_id, 'title': title,
+        'body': body, 'locked': false, 'type': 'standard', 'created': row['date_recorded'].iso8601 }
+      LOG.info('Create Topic: ' + topic.as_json.to_s)
+        
+      binding.pry
+      new_topic = @api.post(endpoint: 'forums/topics', data: topic)
+      binding.pry
+        #  => "{\n    \"topicId\": \"315\",\n    \"categoryId\": \"33\",\n    \"groupId\": \"0\",\n    \"title\": \"API+post\",\n    \"userId\": \"26\",\n    \"time\": \"2018-12-27T14:11:00-08:00\",\n    \"views\": \"0\",\n    \"replies\": \"0\",\n    \"locked\": false,\n    \"type\": \"standard\",\n    \"firstPostId\": \"0\",\n    \"firstPostUserId\": \"0\",\n    \"lastPostId\": \"0\",\n    \"lastPostUserId\": \"0\",\n    \"lastPostSubject\": \"\",\n    \"lastPostTime\": null,\n    \"hidden\": false,\n    \"statusId\": \"0\"\n}" 
     sleep @api.time_between_calls
     if new_topic.class == Hash
-      # binding.pry
+      binding.pry
       p new_topic
     end
 
     begin
       new_id = JSON.parse(new_topic.body).dig('topicId')
-      FORUM_MAP.info("TOPIC,#{row['post_id']},#{new_id}")
+      FORUM_MAP.info("TOPIC,category_id: #{category_id}, group_id: #{group_id}, wp_post_id: #{row['post_id']}, swc_new_id: #{new_id}")
     rescue Exception => e
       LOG.error("UNABLE to SYNC Topic: #{topic}. Error: #{new_topic}")
     end
