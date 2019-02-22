@@ -16,6 +16,8 @@ class ThrottledApiClient
   attr_reader :api_token
   attr_reader :time_between_calls
 
+  attr_reader :api_call_count
+
   def initialize(api_url:, max_calls_sec: DEFAULT_API_RATE, time_between_calls: DEFAULT_API_RATE, token_method:, logger:)
     @call_queue = Queue.new
     @queue_consumer = start_request_queue_consumer
@@ -25,6 +27,8 @@ class ThrottledApiClient
     @token_method = token_method
     @api_token = token_method.call
     @logger = logger
+
+    @api_call_count = 0
   end
 
   def call(endpoint:, params: {})
@@ -72,6 +76,12 @@ class ThrottledApiClient
     end
   end
 
+  # handle token reset
+  def reset_token
+    @logger.info('Resetting token...')
+    @api_token = @token_method.call
+  end
+
   # create an account and send email
   def post(endpoint:, data:, params: {})
     base_uri = [URI.join(@api_url, endpoint).to_s, params.to_query].compact.join('?')
@@ -106,7 +116,7 @@ class ThrottledApiClient
 
   # gather pages if there is a next_page token and the result set contains participants
   def gather_pages?(response)
-    response.headers.key?(:link)
+    response.headers.key?(:link) && response.headers[:link].include?("rel=\"next")
   end
 
   # get next page by re-sending same request but with next page token. This will block for max api call rate duration
@@ -114,9 +124,10 @@ class ThrottledApiClient
   def get_next_page(response)
     next_page_url = response.headers[:link].match(/^<([^>]*)>; rel=\"next/)
     request_uri = URI.parse(next_page_url.captures.first)
-    endpoint = [request_uri.path.split('/').last, request_uri.query].join('?')
+    # TODO remove.. not generic
+    base_uri = '/services/4.0/'
+    endpoint = [request_uri.path.split(base_uri).last, request_uri.query].join('?')
     sleep @time_between_calls
-    # p "fetching page #{endpoint}"
     call(endpoint: endpoint)
   end
 
