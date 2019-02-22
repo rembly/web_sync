@@ -15,22 +15,25 @@ require_relative '../salesforce_sync'
 # X-Rate-Limit-Reset – Seconds left in the current me frame
 # TODO: Abstract Rest Methods and Throttling to base class with ZoomSync
 class SwcSync
-  LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'swc.log'))
+  # LOG = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'swc.log'))
+  LOG_FILE = File.join(File.dirname(__FILE__), '..', '..', 'log', 'swc_file_sync.log')
+  LOG = Logger.new(LOG_FILE)
+  LOG_GROUP_FILES = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'swc_group_files.log'))
   HALT_CALL_QUEUE_SIGNAL = :stop
   MAX_CALLS_PER_SECOND = 0.4
   TIME_BETWEEN_CALLS = 0.4
   API_URL = "https://#{ENV['SWC_AUDIENCE']}/services/4.0/"
   FILES_PATH = ENV['BUDDY_FILE_PATH']
-  CHAPTER_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', 'data', 'chapter_import.json')
+  CHAPTER_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', '..', 'data', 'chapter_import.json')
   # ACTION_TEAM_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', 'data', 'action_team_import.json')
-  BUDDY_FILES_CSV = File.join(File.dirname(__FILE__), '..', 'data', 'buddy_drive_files.csv')
+  BUDDY_FILES_CSV = File.join(File.dirname(__FILE__), '..', '..', 'data', 'buddy_drive_files.csv')
   # ACTION_TEAM_MEMBERS = File.join(File.dirname(__FILE__), '..', 'data', 'action_team_members.json')
-  GROUP_MEMBERS = File.join(File.dirname(__FILE__), '..', 'data', 'group_members.json')
-  STATE_COORD_MEMBERS = File.join(File.dirname(__FILE__), '..', 'data', 'state_coord_members.json')
-  SWC_GROUPS = File.join(File.dirname(__FILE__), '..', 'data', 'swc_groups.json')
-  SWC_GROUP_OWNERS = File.join(File.dirname(__FILE__), '..', 'data', 'swc_groups_owners.json')
-  SWC_SF_GROUP_MAP = File.join(File.dirname(__FILE__), '..', 'data', 'swc_sf_group_map.json')
-  SWC_ACTION_TEAM_LEADERS = File.join(File.dirname(__FILE__), '..', 'data', 'swc_action_team_leaders.json')
+  GROUP_MEMBERS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'group_members.json')
+  STATE_COORD_MEMBERS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'state_coord_members.json')
+  SWC_GROUPS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'swc_groups.json')
+  SWC_GROUP_OWNERS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'swc_groups_owners.json')
+  SWC_SF_GROUP_MAP = File.join(File.dirname(__FILE__), '..', '..', 'data', 'swc_sf_group_map.json')
+  SWC_ACTION_TEAM_LEADERS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'swc_action_team_leaders.json')
   DRIVE_COLUMNS = %i[id email path title description mime_type].freeze
   DEFAULT_CATEGORY = '1'
   SWC_CONTACT_FIELDS = %w[Email FirstName LastName Region__c Group_del__c SWC_Create_User__c SWC_Chapter_Status__c SWC_User_ID__c SWC_Regional_Coordinator__c SWC_Staff__c SWC_State_Coordinator__c SWC_Liaison__c SWC_Group_Leader__c Country_Full_Name__c Group_del__r.SWC_Group_ID__c Group_Leader_del__c].freeze
@@ -103,16 +106,6 @@ class SwcSync
   #   File.open(ACTION_TEAM_FILE_LOCATION, 'w') { |f| f.puts(import_string.to_json) }
   # end
 
-  # def action_team_members
-  #   wp_client.query(<<-QUERY)
-  #     SELECT u.id, u.user_login, u.user_nicename, u.user_email, g.name group_name, gm.user_title
-  #     FROM wp_bp_groups g
-  #       JOIN wp_bp_groups_members gm ON g.id = gm.group_id
-  #       JOIN wp_users u ON u.id = gm.user_id
-  #     WHERE parent_id = 283
-  #   QUERY
-  # end
-
   # #2 - after initial import of groups via import tool, set the SWC ID in SF
   # TODO: we could build a CSV for mass update in SF depending on API call limit..
   def set_group_id_in_sf
@@ -128,52 +121,6 @@ class SwcSync
     end
   end
 
-  # # 1 - set action team members via JSON import file for use with import tool
-  # def set_action_team_members
-  #   action_members = action_team_members
-  #   # Use all groups.. some 'action teams' in old community will be admin groups in new community
-  #   swc_action_teams = call(endpoint: 'groups')
-  #   team_names = swc_action_teams.each_with_object({}) { |team, map| map[team['name']] = team['id']; }
-  #   # TODO limit by SWC ID present?
-  #   sf_community_users = sf.client.query("SELECT Id, FirstName, LastName, Email, SWC_User_ID__c, CCL_Community_Username__c FROM Contact WHERE CCL_Community_Username__c <> '' AND SWC_User_ID__c <> 0")
-  #   user_logins = sf_community_users.each_with_object({}) { |user, map| map[user.CCL_Community_Username__c] = user; }
-
-  #   update = action_members.each_with_object([]) do |member, updates|
-  #     # this will create a user if we don't filter SF users by those with SWC ID
-  #     username = member['user_login']
-  #     action_team = CGI.escape(member['group_name'])
-  #     next unless user_logins.include?(username) && team_names.key?(action_team)
-  #     sf_user = user_logins[username]
-  #     updates << { '*_email_address': sf_user.Email.to_s.gsub('+', '%2B'), '*_username': sf_user.FirstName + ' ' + sf_user.LastName,
-  #                  '*_first_name': sf_user.FirstName, '*_last_name': sf_user.LastName, 'o_groups': team_names[action_team] }
-  #   end
-  #   # can do multiple of the same user
-  #   File.open(ACTION_TEAM_MEMBERS, 'w') { |f| f.puts(update.to_json) }
-  # end
-
-  # def set_action_team_admins
-  #   action_leaders = sf.client.query("SELECT Name, Inactive__c, Leader_1__c, Leader_2__c, Leader_1__r.SWC_User_ID__c, Leader_2__r.SWC_User_ID__c FROM Action_Team__c WHERE Inactive__c = false")
-  #   swc_action_teams = call(endpoint: 'groups', params: { categoryId: ACTION_TEAM_CATEGORY })
-  #   team_names = swc_action_teams.each_with_object({}) { |team, map| map[team['name']] = team['id']; }
-
-  #   action_leaders.each do |team|
-  #     group_id = team_names[CGI.escape(team.Name)]
-  #     next unless group_id.present?
-  #     uri = URI.join(API_URL, "groups/#{group_id}/members").to_s
-  #     if team&.Leader_1__r&.SWC_User_ID__c
-  #       res = RestClient.post(uri, { userId: team.Leader_1__r.SWC_User_ID__c.to_i, invited: true, status: 2,
-  #         notifications: {members: 1, photos: 1, files: 1, forums: 1, videos: 1, events: 1}}.to_json,  content_type: :json, Authorization: "Bearer #{swc_token}") 
-  #       LOG.info("Created User #{team.Leader_1__r.SWC_User_ID__c.to_i.to_s} for #{team.Name}: #{res}")
-  #       sleep TIME_BETWEEN_CALLS
-  #     end
-  #     if team&.Leader_2__r&.SWC_User_ID__c
-  #       res = RestClient.post(uri, { userId: team.Leader_2__r.SWC_User_ID__c.to_i, invited: true, status: 2,
-  #         notifications: {members: 1, photos: 1, files: 1, forums: 1, videos: 1, events: 1}}.to_json, content_type: :json, Authorization: "Bearer #{swc_token}") 
-  #       LOG.info("Created User #{team.Leader_2__r.SWC_User_ID__c.to_i.to_s} for #{team.Name}: #{res}")
-  #       sleep TIME_BETWEEN_CALLS
-  #     end
-  #   end
-  # end
 
   def sf_chapters_to_import
     sf.client.query(<<-QUERY)
@@ -252,17 +199,6 @@ class SwcSync
       'o_content_videos': '0', 'o_content_files': '1', 'o_content_members': '1' }
   end
 
-  # def get_action_team_json(sf_team, wp_action_team)
-  #   wp_action_team ||= {}
-  #   owner = sf_team&.Leader_1__r&.SWC_User_ID__c || sf_team&.Leader_2__r&.SWC_User_ID__c || GROUP_DEFAULT_OWNER
-  #   status = wp_action_team && wp_action_team.dig('status') == 'private' ? '2' : '1'
-
-  #   { '*_name': sf_team.Name, '*_description': wp_action_team.dig('description') || sf_team.Name,
-  #     '*_category_id': ACTION_TEAM_CATEGORY, '*_owner_user_id': owner.to_i.to_s, 'o_access_level': status,
-  #     'o_content_forums': '2', 'o_content_events': '2', 'o_content_photos': '1',
-  #     'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '1' }
-  # end
-
   # CAUTION run this only after confirming you're pointing at staging and not production
   def reset_staging
     return false unless ENV['ENVIRONMENT'] == 'development' && API_URL.include?('stage')
@@ -317,19 +253,40 @@ class SwcSync
                   .each_with_object({}) { |group, map| map[CGI.escape(group.Name.downcase)] = group.SWC_Group_ID__c }
     all_groups = call(endpoint: 'groups').each_with_object(sf_groups){|grp, map| map[grp['name'].downcase] = grp['id']}
     missing_groups = Set.new
+
+    already_loaded = File.readlines(LOG_FILE).map{|line| line.match(/^.*uploaded.*wp_file_id: (\d*),.*$/)&.captures&.first }.compact.uniq
+
     upload_count = 0
+    count = 0
     buddy_drive_files.each do |buddy_file|
+      #skip already loaded
+      next if already_loaded.include?(buddy_file['post_id'].to_s.strip)
+
       # find the user and group
       user_id = sf_community_users[buddy_file['user_login']].to_i.to_s
-      group_id = all_groups[CGI.escape(buddy_file['group_name'].to_s.downcase)]&.to_i&.to_s
+      group_name = CGI.escape(buddy_file['group_name'].to_s.downcase)
+      group_id = all_groups[group_name]&.to_i&.to_s
 
-      if buddy_file['group_name'].blank? || (buddy_file['group_name'].present? && group_id.present?)
+      # going to ignore times where I can't find the group
+      # if buddy_file['group_name'].blank? || (buddy_file['group_name'].present? && group_id.present?)
+      
+      if user_id.to_i.nonzero?
+        if group_name.present? && group_id.to_i.zero?
+          LOG.error("Couldn't find group #{buddy_file['group_name']} for file: #{buddy_file}")
+          missing_groups << buddy_file['group_name']
+        elsif group_id.to_i.nonzero?
+          LOG_GROUP_FILES.info("GROUP_FILE: group_id: #{group_id}, user_id: #{user_id}, wp_id: #{buddy_file['post_id']}, file: #{buddy_file}")
+        end
         upload_file(buddy_file, user_id, group_id)
         sleep MAX_CALLS_PER_SECOND
         upload_count += 1
+        count += 1
+        if count > 50
+          @swc_token = JsonWebToken.swc_token
+          count = 0
+        end
       else
-        LOG.error("Couldn't find group #{buddy_file['group_name']} for file: #{buddy_file}")
-        missing_groups << buddy_file['group_name']
+        LOG.error("User #{user_id} / #{buddy_file['user_login']} not found for file upload #{buddy_file}")
       end
     end
 
@@ -342,10 +299,20 @@ class SwcSync
       begin
         filename = File.basename(URI.parse(file['path'])&.path)
         upload = File.join(FILES_PATH, filename)
-        uri = URI.join(API_URL, group_id.present? ? "groups/#{group_id}/files" : 'files').to_s
+        #TODO: skipping group files for now
+        # uri = URI.join(API_URL, group_id.present? ? "groups/#{group_id}/files" : 'files').to_s
+        uri = URI.join(API_URL, 'files').to_s
+
         # LOG.info("Uploading #{group_id.present? ? 'Group' : ''} File #{file}, URI: #{uri}, User: #{user_id}, Group: #{group_id}, File: #{upload}")
-        RestClient.post(uri, { file: upload, title: file['title'], description: file['description'],
+        if(! File.exist?(upload))
+          LOG.error("Could not upload #{group_id.present? ? 'Group' : ''} File #{file}, URI: #{uri}, User: #{user_id}, Group: #{group_id}, File: #{upload}")
+          LOG.error("Exception: File #{upload} does not exist in backup")
+          return
+        end
+
+        res = RestClient.post(uri, { file: File.new(upload, 'rb'), title: file['title'], description: file['description'],
                                public: false, userId: user_id, categoryId: '0' }, Authorization: "Bearer #{swc_token}")
+        LOG.info("#{filename} uploaded. user_id: #{user_id}, group_id: #{group_id}, wp_file_id: #{file['post_id']}, file: #{file}")
       rescue RestClient::ExceptionWithResponse => e
         return handle_response(e.response)
       rescue URI::InvalidURIError => e
@@ -376,21 +343,6 @@ class SwcSync
     end
     File.open(SWC_GROUP_OWNERS, 'w') { |f| f.puts(updates.to_json) }
   end
-
-  # def build_action_team_admin_export
-  #   action_teams = call(endpoint:'groups', params: {categoryId: 5})
-  #   action_team_ids = action_teams.map{|r| r['id']}
-  #   action_team_members = action_team_ids.map{|team_id| call(endpoint: "groups/#{team_id}/members", params: {embed: 'user'})}
-  #   action_team_admins = action_team_members.flatten.select{|member| member['status'].to_i > 1}.map{|admin| admin['user']}
-
-  #   update = action_team_admins.uniq.each_with_object([]) do |admin, updates|
-  #     updates << { '*_email_address': admin['emailAddress'], '*_username': admin['username'],
-  #                  '*_first_name': admin['firstName'], '*_last_name': admin['lastName'], 
-  #                  'o_groups': '1878' }
-  #   end
-  #   # can do multiple of the same user
-  #   File.open(SWC_ACTION_TEAM_LEADERS, 'w') { |f| f.puts(update.to_json) }
-  # end
 
   def join_user_to_group
     user_id = 26;
