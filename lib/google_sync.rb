@@ -12,9 +12,12 @@ class GoogleSync
    APPLICATION_NAME = ENV['GOOGLE_APP_NAME']
    LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync_endorsers.log'))
    ENDORSER_SHEET_ID = ENV['GOOGLE_ENDORSER_SHEET_ID']
-   ENDORSER_DATA_RANGE = 'Ready for Web!A2:AF'.freeze
-   COLUMN_HEADING_RANGE = 'Ready for Web!A1:AF1'.freeze
-   COLUMN_HEADINGS = ['Submitted Date','Completion Time','Completion Status',"I'm Endorsing As...",'First Name ','Last Name','Title','Email','Phone','Organization Name','Organization Name','Website URL','Address Line 1','Address Line 1','Address Line 2','City','State','Postal Code','Organization Type','# of U.S. employees','Population','Comments (not required)','Please confirm','Response Url','Referrer','Ip Address','Unprotected File List','Reviewer','Status','Notes','Featured Endorser', 'Final Staff Check']
+   ENDORSER_DATA_RANGE = 'Ready for Web!A2:AG'.freeze
+   COLUMN_HEADING_RANGE = 'Ready for Web!A1:AG1'.freeze
+   COLUMN_HEADINGS = ['Submitted Date','Completion Time','Completion Status',"I'm Endorsing As...",'First Name ','Last Name','Title','Email',
+      'Phone','Organization Name','Organization Name','Website URL','Address Line 1','Address Line 1','Address Line 2','City','State',
+      'Postal Code','Organization Type','# of U.S. employees','Population','Comments (not required)','Please confirm','Response Url','Referrer',
+      'Ip Address','Unprotected File List','Reviewer','Status','Notes','Featured Endorser', 'Final Staff Check', 'Link to Resource']
    WP_ENDORSER_TABLE = 'bill_endorsers'
 
    FINAL_STAFF_CHECK = 31
@@ -39,7 +42,7 @@ class GoogleSync
       begin
          wp_client.query(<<-INSERT)
             INSERT INTO #{WP_ENDORSER_TABLE}(first_name, last_name, title, organization_name,
-               website_url, city, state, postal_code, organization_type, featured_endorser, individual_organization)
+               website_url, city, state, postal_code, organization_type, featured_endorser, individual_organization, link_to_resource)
             VALUES
                #{current_endorsers.map{|endorser_row| '("' + endorser_row.join('","') + '")'}.join(',')}
          INSERT
@@ -66,10 +69,11 @@ class GoogleSync
       website_url = row[11]
       city, state, zip = row[15], row[16], row[17]
       comments = row[21]
+      linked_resource = row[32]
       # submitted_at = row[0]
       featured_endorser = row[30].to_s.present? ? 1 : 0;
 
-      [first_name, last_name, title, org_name, website_url, city, state, zip, org_type, featured_endorser, org]
+      [first_name, last_name, title, org_name, website_url, city, state, zip, org_type, featured_endorser, org, linked_resource]
    end
 
    def clear_wp_endorsers
