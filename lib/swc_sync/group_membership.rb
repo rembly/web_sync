@@ -7,7 +7,7 @@ require_relative '../web_sync/throttled_api_client'
 require_relative '../salesforce_sync'
 
 class GroupMembership
-  LOG = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'toggle_group_messaging.log'))
+  LOG = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'add_chapter_members.log'))
   MISSING_ID = File.join(File.dirname(__FILE__), '..', '..', 'data', 'Missing SWC_ID.csv')
   WITH_IDS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'with_ids.csv')
 
@@ -80,6 +80,26 @@ class GroupMembership
       sleep 0.4
       LOG.info("sf_id: #{sf_ids}, group: #{swc_group_id}, swc_user_id: #{swc_user_id}, response: #{response.to_s}")
     end
+  end
+
+  def set_chapter_members(group_id:)
+    chapter_members = get_sf_chapter_members(group_id: group_id)
+
+    chapter_members.each do |sf_user|
+      user_id = sf_user.SWC_User_ID__c.to_i.to_s
+      response = api.post(endpoint: "groups/#{group_id}/members", data: {userId: user_id})
+      sleep 0.4
+      LOG.info("sf_id: #{user_id}, group_id: #{group_id}, res: #{response.to_s.gsub("\n", '').strip}")
+    end
+  end
+
+  def get_sf_chapter_members(group_id:)
+    @sf_contacts = sf.client.query(<<-QUERY)
+      SELECT Id, SWC_User_ID__c, Group_del__c, Group_del__r.SWC_Group_ID__c
+      FROM Contact 
+      WHERE SWC_User_ID__c <> 0 AND SWC_User_ID__c <> null AND 
+        Group_del__c <> null AND Group_del__r.SWC_Group_ID__c = #{group_id}
+    QUERY
   end
 
   def set_group_admins
