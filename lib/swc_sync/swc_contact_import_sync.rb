@@ -10,6 +10,7 @@ class SwcContactImportSync
   LOG_FILE = File.join(File.dirname(__FILE__), '..', '..', 'log', 'swc_contact_update.log')
   # LOG = Logger.new(LOG_FILE)
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'group_messaging_toggle_reverse.log'))
+  ACTIVE_USERS_IMPORT = File.join(File.dirname(__FILE__), '..', '..', 'data', 'users_to_sync_%s.csv').to_s
   CONTACT_IMPORT_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', '..', 'data', 'contact_import.json')
   CONTACTS_TO_CLEAR_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', '..', 'data', 'contact_import_to_clear.json')
   WAIVER_SEGMENTS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'waiver_segment.csv')
@@ -226,6 +227,26 @@ class SwcContactImportSync
         end
       end
     end
+  end
+
+  def build_active_users_sync
+    get_users_to_sync.to_a.each_slice(4000).each_with_index do |rows, index|
+      CSV.open(ACTIVE_USERS_IMPORT % index.to_s, 'w') do |csv|
+        csv << %w[o_ext_ref_id o_user_id]
+        rows.each{|user| csv << [nil,user.SWC_User_ID__c.to_i.to_s]}
+      end
+    end
+  end
+
+  # get users who have interests set, are group leaders, etc.. and should be synced
+  def get_users_to_sync
+    @sf_contacts = sf.client.query(<<-QUERY)
+      SELECT Id, SWC_User_ID__c
+      FROM Contact 
+      WHERE SWC_User_ID__c <> 0 AND SWC_User_ID__c <> null AND 
+        ((SWC_Interests_All__c <> null AND SWC_Interests_All__c <> '') OR (Group_Leader_del__c = true) OR
+         (Primary_Liaison_Count__c > 0 AND Primary_Liaison_Count__c > 0) OR (Is_State_Coordinator__c = true) OR (Is_Regional_Coordinator__c = true))
+    QUERY
   end
 
   def get_sf_conservative_action_team
