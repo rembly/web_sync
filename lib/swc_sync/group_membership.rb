@@ -7,7 +7,7 @@ require_relative '../web_sync/throttled_api_client'
 require_relative '../salesforce_sync'
 
 class GroupMembership
-  LOG = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'add_chapter_members.log'))
+  LOG = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'remove_non_liaisons.log'))
   MISSING_ID = File.join(File.dirname(__FILE__), '..', '..', 'data', 'Missing SWC_ID.csv')
   WITH_IDS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'with_ids.csv')
 
@@ -93,6 +93,46 @@ class GroupMembership
     end
   end
 
+  def remove_members_not_in_chapter(group_id:)
+    # sf_members = get_sf_chapter_members(group_id: group_id).map{|sm| sm.SWC_User_ID__c.to_i.to_s}
+    sf_members = get_liaisons.map{|sm| sm.SWC_User_ID__c.to_i.to_s}
+    swc_members = api.call(endpoint: "groups/#{group_id}/members")
+
+    members_not_in_chapter = swc_members.select{|sm| sf_members.exclude?(sm['userId'])}
+
+    members_not_in_chapter.each do |member|
+      did_delete = api.send_delete(endpoint: "groups/#{group_id}/members/#{member['id']}")
+      sleep 0.4
+      if(did_delete == true)
+        LOG.info("DELETE - swc_id: #{member['userId']}, group_id: #{group_id}, member_id: #{member['id']}")
+      else
+        LOG.info("DELETE FAILED - swc_id: #{member['userId']}, group_id: #{group_id}, member_id: #{member['id']}")
+      end
+    end
+  end
+
+  def add_members_not_in_chapter(group_id:)
+    sf_members = get_sf_chapter_members(group_id: group_id).map{|sm| sm.SWC_User_ID__c.to_i.to_s}
+    swc_members = api.call(endpoint: "groups/#{group_id}/members").map{|sm| sm['userId']}
+
+    members_should_be_in_chapter = sf_members.select{|user_id| swc_members.exclude?(user_id)}
+
+    members_should_be_in_chapter.each do |member_id|
+      res = api.post(endpoint: "groups/#{group_id}/members", data: {userId: member_id})
+      sleep 0.4
+      LOG.info("sf_id: #{member_id}, group_id: #{group_id}, res: #{res.to_s.gsub("\n", '').strip}")
+    end
+  end
+
+  def print_group_members(group_id:)
+    members = api.call(endpoint: "groups/#{group_id}/members?embed=user")
+    to_print = members.map{|m| user = m['user']; [user['userId'], user['username'], user['emailAddress']]}
+    CSV.open(File.join(File.dirname(__FILE__), '..', '..', 'data', "group_#{group_id}_members.csv"), 'w') do |csv|
+      to_print.each{|line| csv << line}
+    end
+  end
+
+
   def get_sf_chapter_members(group_id:)
     @sf_contacts = sf.client.query(<<-QUERY)
       SELECT Id, SWC_User_ID__c, Group_del__c, Group_del__r.SWC_Group_ID__c
@@ -100,6 +140,28 @@ class GroupMembership
       WHERE SWC_User_ID__c <> 0 AND SWC_User_ID__c <> null AND 
         Group_del__c <> null AND Group_del__r.SWC_Group_ID__c = #{group_id}
     QUERY
+  end
+
+  def get_liaisons
+    @sf_contacts = sf.client.query(<<-QUERY)
+    SELECT Id, SWC_User_ID__c 
+    FROM Contact 
+    WHERE SWC_User_ID__c <> 0 AND SWC_User_ID__c <> null AND SWC_Liaison__c <> '' AND SWC_Liaison__c <> null
+    QUERY
+  end
+
+  def set_group_members_from_query
+    group_id = 2029
+    sf_members = sf.client.query(<<-QUERY)
+      SELECT Id, Country_Full_Name__c, Group_Leader_del__c, SWC_User_ID__c FROM Contact 
+      WHERE Group_Leader_del__c = true AND Country_Full_Name__c = 'Australia' AND SWC_User_ID__c <> null
+    QUERY
+
+    sf_members.each do |sf_members|
+      res = api.post(endpoint: "groups/#{group_id}/members", data: {userId: sf_members.SWC_User_ID__c.to_i.to_s})
+      sleep 0.4
+      LOG.info("ADD MEMBER: group_id: #{group_id}, user_id: #{sf_members.SWC_User_ID__c.to_i.to_s} res: #{res.to_s.gsub("\n", '').strip}")
+    end
   end
 
   def set_group_admins

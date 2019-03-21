@@ -229,6 +229,22 @@ class SwcContactImportSync
     end
   end
 
+  def set_user_segment_json(group_id: 1878, segment_id: '97')
+    current_members = api.call(endpoint: "groups/#{group_id}/members")
+
+    set_segment = current_members.map do |member| 
+      user = api.call(endpoint: "users/#{member['userId']}?embed=tiers")
+      sleep 0.4
+      tiers = (user['tiers'] << segment_id).uniq.join(',')
+      { '*_email_address': user['emailAddress'], '*_username': user['username'],
+      '*_first_name': user['firstName'], '*_last_name': user['lastName'], 'o_segments': tiers}
+    end
+    
+    File.open(File.join(File.dirname(__FILE__), '..', '..', 'data', 'set_segment_import.json'), 'w') do |file|
+      file.puts(set_segment.to_json)
+    end
+  end
+
   def build_active_users_sync
     get_users_to_sync.to_a.each_slice(4000).each_with_index do |rows, index|
       CSV.open(ACTIVE_USERS_IMPORT % index.to_s, 'w') do |csv|
@@ -244,8 +260,10 @@ class SwcContactImportSync
       SELECT Id, SWC_User_ID__c
       FROM Contact 
       WHERE SWC_User_ID__c <> 0 AND SWC_User_ID__c <> null AND 
-        ((SWC_Interests_All__c <> null AND SWC_Interests_All__c <> '') OR (Group_Leader_del__c = true) OR
-         (Primary_Liaison_Count__c > 0 AND Primary_Liaison_Count__c > 0) OR (Is_State_Coordinator__c = true) OR (Is_Regional_Coordinator__c = true))
+        ((SWC_Interests_All__c <> null AND SWC_Interests_All__c <> '') OR Group_Leader_del__c = true OR
+         (Primary_Liaison_Count__c > 0 AND Primary_Liaison_Count__c > 0) OR Is_State_Coordinator__c = true OR Is_Regional_Coordinator__c = true
+         OR Chapter_Roster_Editor__c = true OR (SWC_State_Roster_Access__c <> '' AND SWC_State_Roster_Access__c <> null)
+         OR (SWC_Conservative_Caucus__c <> '' AND SWC_Conservative_Caucus__c <> null))
     QUERY
   end
 

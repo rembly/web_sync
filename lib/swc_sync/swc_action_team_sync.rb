@@ -7,7 +7,7 @@ require_relative '../web_sync/throttled_api_client'
 require_relative '../salesforce_sync'
 
 class SwcActionTeamSync
-  LOG_FILE = File.join(File.dirname(__FILE__), '..', '..', 'log', 'trainers.log')
+  LOG_FILE = File.join(File.dirname(__FILE__), '..', '..', 'log', 'add_action_members.log')
   LOG = Logger.new(LOG_FILE)
   MEMBER_MAP = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'swc_action_team_members.log'))
   ACTION_TEAM_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', '..', 'data', 'action_team_import.json')
@@ -21,8 +21,10 @@ class SwcActionTeamSync
   attr_accessor :sf
   attr_accessor :wp
   attr_accessor :user_map
+  attr_accessor :sf_users
 
   ACTION_TEAM_MAP = {
+    'great-white-north' => 2021,
     'group-leaders' => 1767, 'regional-coordinators' => 946, 'liaisons-1475069368' => 998,
     'ccl-visuals-graphics-art-and-more' => 960,
     'clr-caucus' => 965, # sub group???? consevative media
@@ -39,29 +41,31 @@ class SwcActionTeamSync
     'print-media' => 992, 'progressive-outreach' => 994, 'quakers' => 991, 'broadcast-media' => 963,
     'climate-reality-leadership-corp' => 989, 'evangelical-christian-action-team' => 983, # group rename
     'strategic-planning' => 985, 'episcopal-action-team' => 981, # group rename 'chinese-action-team' => 980, #group rename
-    'lgbtqa-climate' => 1880,
-  } 
+    'lgbtqa-climate' => 1880, 'pathway-to-paris' => 971,
+    'ca-climate-policy-team' => 2107
+  }
 
   def initialize
     @api = ThrottledApiClient.new(api_url: "https://#{ENV['SWC_AUDIENCE']}/services/4.0/",
                                 logger: LOG, token_method: JsonWebToken.method(:swc_token))
     @sf = SalesforceSync.new
     @wp = MysqlConnection.get_connection
-    # @user_map = get_user_map
+    @user_map = get_user_map
   end
 
   def get_users
     @users.present? ? @users : @users = call(endpoint: 'users', params:{activeOnly: :false})
   end
 
-  def action_team_members
+  def action_team_members_for_team(slug: 'pathway-to-paris')
     wp.query(<<-QUERY)
       SELECT u.id, u.user_login, u.user_nicename, u.display_name, u.user_email, g.name group_name, gm.user_title, g.slug
       FROM wp_bp_groups g
         JOIN wp_bp_groups_members gm ON g.id = gm.group_id
         JOIN wp_users u ON u.id = gm.user_id
-      WHERE parent_id = 283
-    QUERY
+        WHERE slug = '#{slug}'
+      QUERY
+        # WHERE parent_id = 283 AND slug = '#{slug}'
   end
 
   def get_team_id(team_names, row)
@@ -118,34 +122,50 @@ class SwcActionTeamSync
   end
 
   def get_sf_user(member)
-    # @user_map.find{|user| user.CCL_Community_Username__c == member['user_login'] || 
+    # user = @sf_users.find{|user| user.CCL_Community_Username__c == member['user_login'] || 
     #   user.CCL_Community_Username__c == member['user_nicename'] || 
-    #   user.CCL_Community_Username__c == member['display_name']
+    #   user.CCL_Community_Username__c == member['display_name'] ||
+    #   user.Email = member['Email']
     # }
+    # LOG.warn("Can't match WP user #{member['user_login']} - #{member['Email']}") if user.nil?
+    # user
     return @user_map[member['user_login']] || @user_map[member['user_nicename']] || @user_map[member['display_name']]
   end
 
-  def set_action_team_api
-    LOG.info('****** NEW RUN ******')
-    action_members = action_team_members
-    swc_action_teams = api.call(endpoint: 'groups')
+  def set_missing_action_team_members_api(group_slug: 'ca-climate-policy-team', group_id: 2107)
+    action_members = action_team_members_for_team(slug: group_slug)
+    sf_members = action_members.map(&method(:get_sf_user)).compact.map{|sm| sm.SWC_User_ID__c.to_i.to_s}
+    current_members = api.call(endpoint: "groups/#{group_id}/members").map{|sm| sm['userId']}
 
-    team_names = swc_action_teams.each_with_object({}) { |team, map| map[team['name']] = team['id']; }
+    members_should_be_in_group = sf_members.select{|swc_id| current_members.exclude?(swc_id)}
+
+    members_should_be_in_group.each do |member_id|
+      res = api.post(endpoint: "groups/#{group_id}/members", data: {userId: member_id})
+      sleep 0.4
+      LOG.info("sf_id: #{member_id}, group_id: #{group_id}, res: #{res.to_s.gsub("\n", '').strip}")
+    end
+  end
+
+  def set_action_team_api(group_slug: 'ca-climate-policy-team', team_id: 2107)
+    LOG.info('****** NEW RUN ******')
+    action_members = action_team_members_for_team(slug: group_slug)
+    # swc_action_teams = api.call(endpoint: 'groups')
+    # swc_members = api.call(endpoint: "groups/#{group_id}/members")
+
+    # team_names = swc_action_teams.each_with_object({}) { |team, map| map[team['name']] = team['id']; }
     # already_tied = File.readlines(ALREADY_SYNCED).map(&:strip)
 
-    log_file = File.readlines(LOG_FILE)
-    already_tied = log_file.map{|line| line.match(/^.*: (\d*).*/)&.captures&.first }.compact.uniq
+    # log_file = File.readlines(LOG_FILE)
+    # already_tied = log_file.map{|line| line.match(/^.*: (\d*).*/)&.captures&.first }.compact.uniq
 
-    action_members.reverse_each do |member|
-      # this will create a user if we don't filter SF users by those with SWC ID
+    action_members.each do |member|
       username = member['user_login']
       # action_team = CGI.escape(member['group_name'])
-      team_id = get_team_id(team_names, member)
+      # team_id = get_team_id(team_names, member)
       sf_user = get_sf_user(member)
-      next unless sf_user.present? && team_id.present?
+      next unless sf_user.present? # && team_id.present?
       swc_id = sf_user.SWC_User_ID__c.to_i
-      next if already_tied.include?(swc_id.to_i.to_s)
-
+      # next if already_tied.include?(swc_id.to_i.to_s)
       api.post(endpoint: "groups/#{team_id}/members", data: {userId: sf_user.SWC_User_ID__c.to_i})
       sleep 0.4
       message = "#{sf_user.SWC_User_ID__c.to_i}, #{team_id} - tied"
@@ -193,7 +213,26 @@ class SwcActionTeamSync
     File.open(SWC_ACTION_TEAM_LEADERS, 'w') { |f| f.puts(update.to_json) }
   end
 
-  def get_action_team_json(sf_team, wp_action_team)
+  def build_action_team_import(team_slug:)
+    action_teams = wp.query("SELECT * FROM wp_bp_groups WHERE slug = '#{team_slug}'")
+    # action_teams_by_name = action_teams.to_a.each_with_object({}) { |team, map| map[team['name']] = team }
+    # sf_action_teams = sf.client.query('SELECT Name, Inactive__c, Leader_1__c, Leader_2__c, Leader_1__r.SWC_User_ID__c, Leader_2__r.SWC_User_ID__c FROM Action_Team__c WHERE Inactive__c = false')
+    # import_string = sf_action_teams.collect { |sf_team| get_action_team_json(sf_team, action_teams_by_name[sf_team.Name]) }
+    import_string = action_teams.collect { |team| get_action_team_json_from_wp(team) }
+    File.open(ACTION_TEAM_FILE_LOCATION, 'w') { |f| f.puts(import_string.to_json) }
+  end
+
+  def get_action_team_json_from_wp(wp_action_team)
+    owner = GROUP_DEFAULT_OWNER
+    status = wp_action_team && wp_action_team.dig('status') == 'private' ? '2' : '1'
+
+    { '*_name': wp_action_team.dig('name'), '*_description': wp_action_team.dig('description') || wp_action_team.dig('name'),
+      '*_category_id': ACTION_TEAM_CATEGORY, '*_owner_user_id': owner.to_i.to_s, 'o_access_level': status,
+      'o_content_forums': '2', 'o_content_events': '2', 'o_content_photos': '1',
+      'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '1' }
+  end
+
+  def get_action_team_json_from_sf(sf_team, wp_action_team)
     wp_action_team ||= {}
     owner = sf_team&.Leader_1__r&.SWC_User_ID__c || sf_team&.Leader_2__r&.SWC_User_ID__c || GROUP_DEFAULT_OWNER
     status = wp_action_team && wp_action_team.dig('status') == 'private' ? '2' : '1'
@@ -239,12 +278,14 @@ class SwcActionTeamSync
   end
 
   def get_user_map
+    # Auto_Congressional_District_From_Address__c, State_Province_Division__c 
     community_users = sf.client.query(<<-QUERY)
-      SELECT Id, FirstName, LastName, Email, Alternate_Email__c, CCL_Email_Three__c, CCL_Email_Four__c, SWC_User_ID__c, CCL_Community_Username__c, 
-        Auto_Congressional_District_From_Address__c, State_Province_Division__c 
+      SELECT Id, FirstName, LastName, Email, Alternate_Email__c, CCL_Email_Three__c, CCL_Email_Four__c, SWC_User_ID__c, CCL_Community_Username__c 
       FROM Contact 
-      WHERE CCL_Community_Username__c <> '' AND SWC_User_ID__c <> 0
+      WHERE Is_CCL_Supporter__c = true AND CCL_Community_Username__c <> '' AND SWC_User_ID__c <> 0
     QUERY
+
+    @sf_users = community_users
 
     community_users.inject({}) do |map, user| 
       if user.SWC_User_ID__c.to_i.nonzero?

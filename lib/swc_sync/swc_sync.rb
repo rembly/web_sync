@@ -8,6 +8,7 @@ require_relative '../web_sync/json_web_token'
 require_relative '../web_sync/mysql_connection'
 require_relative '../zoom_sync'
 require_relative '../salesforce_sync'
+require_relative '../web_sync/throttled_api_client'
 
 # Rate Limiting Headers
 # X-Rate-Limit-Limit – Number of requests allowed in the time frame 100 requests per 60 seconds
@@ -33,6 +34,7 @@ class SwcSync
   SWC_GROUPS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'swc_groups.json')
   SWC_GROUP_OWNERS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'swc_groups_owners.json')
   SWC_SF_GROUP_MAP = File.join(File.dirname(__FILE__), '..', '..', 'data', 'swc_sf_group_map.json')
+  SWC_SF_GROUP_MAP_MISSING = File.join(File.dirname(__FILE__), '..', '..', 'data', 'swc_sf_group_map_missing.json')
   SWC_ACTION_TEAM_LEADERS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'swc_action_team_leaders.json')
   DRIVE_COLUMNS = %i[id email path title description mime_type].freeze
   DEFAULT_CATEGORY = '1'
@@ -55,6 +57,7 @@ class SwcSync
   attr_accessor :users
   attr_accessor :sf
   attr_accessor :wp_client
+  attr_accessor :api
 
   def initialize
     @swc_token = JsonWebToken.swc_token
@@ -62,6 +65,8 @@ class SwcSync
     @queue_consumer = start_request_queue_consumer
     @sf = SalesforceSync.new
     @wp_client = MysqlConnection.get_connection
+    @api = ThrottledApiClient.new(api_url: "https://#{ENV['SWC_AUDIENCE']}/services/4.0/",
+      logger: LOG, token_method: JsonWebToken.method(:swc_token))
   end
 
   def get_users
@@ -92,8 +97,17 @@ class SwcSync
   # #5 - builds the mapping of SWC group to SF group for import in the SWC group admin page
   def build_swc_sf_group_map
     groups = sf.client.query('SELECT Id, SWC_Group_ID__c, Name FROM Group__c WHERE SWC_Group_ID__c <> null')
+    swc_group_ids = api.call(endpoint: 'groups').map{|grp| grp['id']}.uniq
+    group_map = groups.select{|g| swc_group_ids.include?(g.SWC_Group_ID__c.to_i.to_s)}
+                      .map{ |g| { 'swl_group': g.SWC_Group_ID__c.to_i.to_s, 'thirdparty_group': g.Name } }
+    missing_groups = groups.select{|g| swc_group_ids.exclude?(g.SWC_Group_ID__c.to_i.to_s) }
+                      .map{ |g| { 'swl_group': g.SWC_Group_ID__c.to_i.to_s, 'thirdparty_group': g.Name } }
+    
     File.open(SWC_SF_GROUP_MAP, 'w') do |f|
-      f.puts({ 'group_map': groups.map { |g| { 'swl_group': g.SWC_Group_ID__c.to_i.to_s, 'thirdparty_group': g.Name } } }.to_json)
+      f.puts({ 'group_map': group_map }.to_json)
+    end
+    File.open(SWC_SF_GROUP_MAP_MISSING, 'w') do |f|
+      f.puts(missing_groups.to_json)
     end
   end
 
