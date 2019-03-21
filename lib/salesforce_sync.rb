@@ -173,12 +173,12 @@ class SalesforceSync
     participant.dig('name').to_s =~ /^\d+$/
   end
 
-  private
-
   def quoted_email_list(email_list)
     quoted_list = email_list.collect { |email| "'#{email}'" }.join(', ')
     EMAIL_FIELDS.collect { |field_name| "#{field_name} IN (#{quoted_list})" }.join(' OR ')
   end
+  
+  private
 
   # returning US-formatted numbers
   def quoted_phone_list(phone_list)
