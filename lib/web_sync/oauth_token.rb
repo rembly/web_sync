@@ -31,9 +31,10 @@ class OauthToken
     end
   end
 
-  def self.google_service_token
+  def self.google_service_token(access: :readonly)
+    scope = access == :readonly ? GOOGLE_SHEET_READONLY_SCOPE : GOOGLE_SHEEET_READWRITE_SCOPE
     authorizer = Google::Auth::ServiceAccountCredentials.make_creds( 
-      json_key_io: File.open(SERVICE_ACCOUNT_KEY_FILE), scope: [GOOGLE_SHEET_READONLY_SCOPE])
+      json_key_io: File.open(SERVICE_ACCOUNT_KEY_FILE), scope: [scope])
     authorizer.fetch_access_token!
     authorizer
   end
