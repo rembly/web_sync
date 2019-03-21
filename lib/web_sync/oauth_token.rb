@@ -15,7 +15,7 @@ class OauthToken
   SANDBOX_TOKEN_URL = 'https://test.salesforce.com/services/oauth2/token'
   PRODUCTION_TOKEN_URL = 'https://login.salesforce.com/services/oauth2/token'
 
-  SERVICE_ACCOUNT_KEY_FILE = 'google_sheet_sync.json'.freeze
+  SERVICE_ACCOUNT_KEY_FILE = File.join(File.dirname(__FILE__), '..', '..', 'google_sheet_sync.json').to_s
   GOOGLE_SHEET_READONLY_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly'
   GOOGLE_SHEEET_READWRITE_SCOPE = 'https://www.googleapis.com/auth/spreadsheets'
 
