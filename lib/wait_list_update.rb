@@ -9,7 +9,7 @@ require 'pry'
 class WaitListUpdate
   APPLICATION_NAME = ENV['GOOGLE_APP_NAME']
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'update_conference_waitlist.log'))
-  WAIT_LIST_SHEET_ID = ENV['CONFERENCE_WAIT_LIST_COPY_SHEET_ID']
+  WAIT_LIST_SHEET_ID = ENV['CONFERENCE_WAIT_LIST_SHEET_ID']
   WAIT_LIST_DATA_RANGE = "'Data 2019'!A2:V308".freeze
   COLUMN_HEADING_RANGE = "'Data 2019'!A1:V".freeze
   UPDATE_RANGE = "'Data 2019'!Q%i:V%i".freeze
