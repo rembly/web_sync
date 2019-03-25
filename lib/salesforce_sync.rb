@@ -22,7 +22,7 @@ class SalesforceSync
   OCAT_RSVP_FIELD = 'new_Member_Orientation_Reg_Date__c'
   OCAT_DATE_FIELDS = %w[New_Member_Call_Date__c New_Member_Call_2_Date__c].freeze
   EMAIL_FIELDS = %w[Email Alternate_Email__c CCL_Email_Three__c CCL_Email_Four__c].freeze
-  PHONE_FIELDS = %w[Phone HomePhone Mobile_Phone_Formatted2__c].freeze
+  PHONE_FIELDS = %w[Phone HomePhone MobilePhone Mobile_Phone_Formatted2__c].freeze
   REQUIRED_FIELDS = %w[Id FirstName LastName].freeze
   SELECT_FIELDS = [*REQUIRED_FIELDS, *PHONE_FIELDS, *EMAIL_FIELDS, *OCAT_DATE_FIELDS, INTRO_CALL_DATE_FIELD, INTRO_CALL_RSVP_FIELD,
                    INTRO_CALL_MISSED_FIELD, OCAT_RSVP_FIELD].freeze
