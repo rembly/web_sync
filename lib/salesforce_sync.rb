@@ -156,7 +156,7 @@ class SalesforceSync
   end
 
   def self.all_phone_numbers_for_user(sf_user)
-    EMAIL_FIELDS.map(&:to_sym).collect { |phone_field| sf_user.try(phone_field) }.compact.delete_if(&:empty?)
+    PHONE_FIELDS.map(&:to_sym).collect { |phone_field| sf_user.try(phone_field) }.compact.delete_if(&:empty?)
   end
 
   # move from Email to CCL Email 4 picking the first one
