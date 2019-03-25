@@ -7,7 +7,7 @@ require_relative '../web_sync/throttled_api_client'
 require_relative '../salesforce_sync'
 
 class GroupMembership
-  LOG = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'remove_non_liaisons.log'))
+  LOG = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'move_member_groups_tx_austin.log'))
   MISSING_ID = File.join(File.dirname(__FILE__), '..', '..', 'data', 'Missing SWC_ID.csv')
   WITH_IDS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'with_ids.csv')
 
@@ -20,28 +20,40 @@ class GroupMembership
     @api = ThrottledApiClient.new(api_url: "https://#{ENV['SWC_AUDIENCE']}/services/4.0/",
                                 logger: LOG, token_method: JsonWebToken.method(:swc_token))
     @sf = SalesforceSync.new
-    # @wp = MysqlConnection.get_connection
   end
 
-  def disable_new_member_notifications
-    group_id = '999'
-    # missing: ["17795", "18971", "97008", "17797", "17781", "17348", "16850", "16851", "17454", "17500", "51516", "17783"]
-    members = api.call(endpoint: "groups/#{group_id}/members?embed=notifications")
+  def disable_new_member_notifications(group_id: 944)
+    members = api.call(endpoint: "groups/#{group_id}/members?embed=notifications").select{|m| m['notifications']['members']}
 
     call_count = 0
     members.each do |group_membership|
-      data = {userId: group_membership['userId'], status: group_membership['status'], 
-        notifications: {members: false, events: true, photos: true, videos: true, files: true, forums: true, messages: true}}
+      new_notifications = group_membership['notifications']
+      new_notifications['members'] = false
+      new_notifications['photos'] = false
+      new_notifications['videos'] = false
+      new_notifications['files'] = false
+      data = {userId: group_membership['userId'], status: group_membership['status'], notifications: new_notifications}
 
       res = api.put(endpoint: "groups/#{group_id}/members/#{group_membership['id']}", data: data)
       call_count += 1
-      sleep 0.4
       LOG.info("NOTIFICATIONS UPDATED: group_id: #{group_id}, user_id: #{group_membership['userId']}, membership_id: #{group_membership['id']}")
       if call_count >= 100
         api.reset_token
         call_count = 0
         LOG.info("resetting token...") 
       end
+    end
+  end
+
+  def add_members_from_group_to_group(from_group: 934, to_group: 944)
+    from_members = api.call(endpoint: "groups/#{from_group}/members").map{|sm| sm['userId']}
+    current_members = api.call(endpoint: "groups/#{to_group}/members").map{|sm| sm['userId']}
+    members_should_be_in_group = from_members.select{|user_id| current_members.exclude?(user_id)}
+
+    members_should_be_in_group.each do |member_id|
+      response = api.post(endpoint: "groups/#{to_group}/members", data: {userId: member_id})
+      binding.pry
+      LOG.info("user: #{member_id} from #{from_group} to_group_id: #{to_group}, res: #{response.to_s.gsub("\n", '').strip}")
     end
   end
 
@@ -54,7 +66,6 @@ class GroupMembership
     caucus_members.each do |sf_user|
       user_id = sf_user.SWC_User_ID__c.to_i.to_s
       response = api.post(endpoint: "groups/#{conservative_caucus_group_id}/members", data: {userId: user_id})
-      sleep 0.4
       LOG.info("sf_it: #{user_id}, group_id: #{conservative_caucus_group_id}, res: #{response.to_s.gsub("\n", '').strip}")
     end
   end
@@ -77,7 +88,6 @@ class GroupMembership
       swc_group_id = line[4].to_i.to_s
 
       response = api.post(endpoint: "groups/#{swc_group_id}/members", data: {userId: swc_user_id, status: 1})
-      sleep 0.4
       LOG.info("sf_id: #{sf_ids}, group: #{swc_group_id}, swc_user_id: #{swc_user_id}, response: #{response.to_s}")
     end
   end
@@ -88,7 +98,6 @@ class GroupMembership
     chapter_members.each do |sf_user|
       user_id = sf_user.SWC_User_ID__c.to_i.to_s
       response = api.post(endpoint: "groups/#{group_id}/members", data: {userId: user_id})
-      sleep 0.4
       LOG.info("sf_id: #{user_id}, group_id: #{group_id}, res: #{response.to_s.gsub("\n", '').strip}")
     end
   end
@@ -102,7 +111,6 @@ class GroupMembership
 
     members_not_in_chapter.each do |member|
       did_delete = api.send_delete(endpoint: "groups/#{group_id}/members/#{member['id']}")
-      sleep 0.4
       if(did_delete == true)
         LOG.info("DELETE - swc_id: #{member['userId']}, group_id: #{group_id}, member_id: #{member['id']}")
       else
@@ -119,7 +127,6 @@ class GroupMembership
 
     members_should_be_in_chapter.each do |member_id|
       res = api.post(endpoint: "groups/#{group_id}/members", data: {userId: member_id})
-      sleep 0.4
       LOG.info("sf_id: #{member_id}, group_id: #{group_id}, res: #{res.to_s.gsub("\n", '').strip}")
     end
   end

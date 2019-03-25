@@ -14,4 +14,8 @@ class MysqlConnection
    def self.endorse_staging_connection
       Mysql2::Client.new(DATABASE_CONFIG['endorse_staging'])
    end
+
+   def self.endorse_production_connection
+      Mysql2::Client.new(DATABASE_CONFIG['endorse_production'])
+   end
 end

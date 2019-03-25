@@ -34,6 +34,7 @@ class ThrottledApiClient
   def call(endpoint:, params: {})
     base_uri = URI.join(@api_url, endpoint).to_s
     begin
+      sleep @time_between_calls
       response = RestClient.get(base_uri, Authorization: "Bearer #{@api_token}", params: params)
       return handle_response(response)
     rescue RestClient::ExceptionWithResponse => e
@@ -52,6 +53,7 @@ class ThrottledApiClient
   def send_delete(endpoint:, params: {})
     base_uri = URI.join(@api_url, endpoint).to_s
     begin
+      sleep @time_between_calls
       RestClient.delete(base_uri, Authorization: "Bearer #{@api_token}")
       @logger.info("Deleted: #{endpoint}")
       # return handle_response(response)
@@ -70,6 +72,7 @@ class ThrottledApiClient
   def put(endpoint:, data:, params: {})
     base_uri = [URI.join(@api_url, endpoint).to_s, params.to_query].compact.join('?')
     begin
+      sleep @time_between_calls
       RestClient.put(base_uri, data.to_json, content_type: :json, accept: :json, Authorization: "Bearer #{@api_token}")
     rescue RestClient::ExceptionWithResponse => e
       return handle_response(e.response)
@@ -86,6 +89,7 @@ class ThrottledApiClient
   def post(endpoint:, data:, params: {})
     base_uri = [URI.join(@api_url, endpoint).to_s, params.to_query].compact.join('?')
     begin
+      sleep @time_between_calls
       RestClient.post(base_uri, data.to_json, content_type: :json, accept: :json, Authorization: "Bearer #{@api_token}")
     rescue RestClient::ExceptionWithResponse => e
       return handle_response(e.response)
