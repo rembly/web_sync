@@ -29,11 +29,10 @@ class EndorserSync
   attr_accessor :wp_client
   attr_accessor :sf
 
-  def initialize
+  def initialize(use_production: false)
     @token = OauthToken.google_service_token
     @google_client = initialize_google_client(@token)
-    # @wp_client = MysqlConnection.get_connection
-    @wp_client = MysqlConnection.endorse_staging_connection
+    @wp_client = use_production ? MysqlConnection.endorse_production_connection : MysqlConnection.endorse_staging_connection
     @sf = SalesforceSync.new
   end
 
