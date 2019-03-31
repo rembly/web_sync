@@ -9,14 +9,15 @@ require 'pry'
 class WaitListUpdate
   APPLICATION_NAME = ENV['GOOGLE_APP_NAME']
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'update_conference_waitlist.log'))
+  # WAIT_LIST_SHEET_ID = ENV['CONFERENCE_WAIT_LIST_COPY_SHEET_ID']
   WAIT_LIST_SHEET_ID = ENV['CONFERENCE_WAIT_LIST_SHEET_ID']
-  WAIT_LIST_DATA_RANGE = "'Data 2019'!A2:V308".freeze
-  COLUMN_HEADING_RANGE = "'Data 2019'!A1:V".freeze
-  UPDATE_RANGE = "'Data 2019'!Q%i:V%i".freeze
-  COLUMN_HEADINGS = ["Timestamp", "Priority", "Notes by MM/MP", "MP part", "First Name", "Last Name", "Email Address",
-    "MM Sent Email", "Registered?", "Phone Number", "Amy 1 mtg", "Congressional District", "# of Constituents Attending from CD",
-    "CCL Key Role/Diverse/Conservative", "Are you under 18?", "Please add any additional information", "Group Leader",
-    "Primary Liaison", "Other Liaison", "Person of Color", "Political Affiliation", "SFID"]
+  WAIT_LIST_DATA_RANGE = "'Data 2019'!A2:X308".freeze
+  COLUMN_HEADING_RANGE = "'Data 2019'!A1:X".freeze
+  UPDATE_RANGE = "'Data 2019'!S%i:X%i".freeze
+  COLUMN_HEADINGS = ['Timestamp', 'Priority', 'Notes by MM/MP', 'MP part', 'First Name', 'Last Name', 'Email Address', 'MM Sent Email', 'Registered?',
+    'Phone Number', 'Amy 1 mtg', 'Congressional District', '# of Constituents Attending from CD', 'Are you under 18?',
+    'Please add any additional information', 'Do you have a chaperone?', 'Who is your chaperone?', 'Are they registered for the conference already?',
+    'Group Leader', 'Primary Liaison', 'Other Liaison', 'Person of Color', 'Political Affiliation', 'SFID']
 
   SELECT_FIELDS = [*SalesforceSync::REQUIRED_FIELDS, *SalesforceSync::EMAIL_FIELDS, *SalesforceSync::PHONE_FIELDS,
     'Group_Leader_del__c',  'Primary_Liaison_Count__c',  'Backup_Liaison_Count__c', 'Race_Ethnicity__c', 'Political_Affiliation__c']
@@ -114,7 +115,7 @@ class WaitListUpdate
   end
 
   def column_headings
-    google_client.get_spreadsheet_values(WAIT_LIST_SHEET_ID, COLUMN_HEADING_RANGE)&.values&.first
+    google_client.get_spreadsheet_values(WAIT_LIST_SHEET_ID, COLUMN_HEADING_RANGE)&.values&.first.map(&:strip)
   end
 
   def valid_data_columns?
