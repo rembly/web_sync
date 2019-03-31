@@ -11,6 +11,7 @@ class WaitListUpdate
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'update_conference_waitlist.log'))
   # WAIT_LIST_SHEET_ID = ENV['CONFERENCE_WAIT_LIST_COPY_SHEET_ID']
   WAIT_LIST_SHEET_ID = ENV['CONFERENCE_WAIT_LIST_SHEET_ID']
+  # ON COLUMN CHANGE
   WAIT_LIST_DATA_RANGE = "'Data 2019'!A2:X308".freeze
   COLUMN_HEADING_RANGE = "'Data 2019'!A1:X".freeze
   UPDATE_RANGE = "'Data 2019'!S%i:X%i".freeze
@@ -22,7 +23,7 @@ class WaitListUpdate
   SELECT_FIELDS = [*SalesforceSync::REQUIRED_FIELDS, *SalesforceSync::EMAIL_FIELDS, *SalesforceSync::PHONE_FIELDS,
     'Group_Leader_del__c',  'Primary_Liaison_Count__c',  'Backup_Liaison_Count__c', 'Race_Ethnicity__c', 'Political_Affiliation__c']
 
-  SFID_CELL = 21
+  SFID_CELL = 23
   EMAIL_CELL = 6
   MULTIPLE_MATCHES = :multiple_matches
   NO_MATCHES = :no_matches
@@ -51,7 +52,8 @@ class WaitListUpdate
     # we should have all SF records that we were able to match. Now run through and set fields
     update = sheet_data.values.each_with_object([]).with_index do |(row, arr), i|
       if row_to_update?(row)
-        values = row.slice(16..-1)
+        # TODO: ON COLUMN CHANGE
+        values = row.slice(18..-1)
         sf_record = get_matching_sf_record(row, sf_list)
         if sf_record == NO_MATCHES || sf_record == MULTIPLE_MATCHES
           values[5] = 'No Match Found' if sf_record == NO_MATCHES
