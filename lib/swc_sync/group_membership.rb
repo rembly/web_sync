@@ -7,7 +7,7 @@ require_relative '../web_sync/throttled_api_client'
 require_relative '../salesforce_sync'
 
 class GroupMembership
-  LOG = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'move_member_groups_tx_austin.log'))
+  LOG = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'set_chapter_zip.log'))
   MISSING_ID = File.join(File.dirname(__FILE__), '..', '..', 'data', 'Missing SWC_ID.csv')
   WITH_IDS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'with_ids.csv')
 
@@ -55,6 +55,31 @@ class GroupMembership
       binding.pry
       LOG.info("user: #{member_id} from #{from_group} to_group_id: #{to_group}, res: #{response.to_s.gsub("\n", '').strip}")
     end
+  end
+
+  def add_group_zip_code
+    # get all chapters with a zip code and SWC ID
+    sf_groups = get_sf_groups
+    by_id = sf_groups.group_by{|g| g.SWC_Group_ID__c.to_i.to_s}
+
+    # get all chapters from SWC
+    swc_groups = api.call(endpoint: 'groups?categoryId=4')
+
+    # if there's no zip find in SF list and set zip, retaining city/state
+    swc_groups.each do |swc_group|
+      address = swc_group.dig('address')
+      if address && address.dig('zip').empty? && by_id.has_key?(swc_group['id'])
+        sf_group = by_id[swc_group['id']].first
+        address['zip'] = sf_group.Postal_Code_Data__r.Name
+        address.delete('latitude')
+        address.delete('longitude')
+        data = {ownerId: swc_group['ownerId'], categoryId: swc_group['categoryId'], name: swc_group['name'],
+                description: swc_group['description'], address: address}
+        res = api.put(endpoint: "groups/#{swc_group['id']}", data: data)
+        LOG.info("group: #{swc_group['id']} set zip, data: #{data}, res: #{res.to_s.gsub("\n", '').strip}")
+      end
+    end
+
   end
 
   #TODO: DISABLE welcome emails
@@ -154,6 +179,14 @@ class GroupMembership
     SELECT Id, SWC_User_ID__c 
     FROM Contact 
     WHERE SWC_User_ID__c <> 0 AND SWC_User_ID__c <> null AND SWC_Liaison__c <> '' AND SWC_Liaison__c <> null
+    QUERY
+  end
+
+  def get_sf_groups
+    @sf_contacts = sf.client.query(<<-QUERY)
+      SELECT Id, Name, SWC_Group_ID__c, Postal_Code_Data__c, Postal_Code_Data__r.Name
+      FROM Group__c 
+      WHERE SWC_Group_ID__c <> 0 AND SWC_Group_ID__c <> null AND Postal_Code_Data__c <> null
     QUERY
   end
 
