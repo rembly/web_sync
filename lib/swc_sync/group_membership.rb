@@ -7,7 +7,7 @@ require_relative '../web_sync/throttled_api_client'
 require_relative '../salesforce_sync'
 
 class GroupMembership
-  LOG = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'set_chapter_zip.log'))
+  LOG = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'disable_notifications.log'))
   MISSING_ID = File.join(File.dirname(__FILE__), '..', '..', 'data', 'Missing SWC_ID.csv')
   WITH_IDS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'with_ids.csv')
 
@@ -22,13 +22,13 @@ class GroupMembership
     @sf = SalesforceSync.new
   end
 
-  def disable_new_member_notifications(group_id: 944)
-    members = api.call(endpoint: "groups/#{group_id}/members?embed=notifications").select{|m| m['notifications']['members']}
+  def disable_new_member_notifications(group_id: 2131)
+    members = api.call(endpoint: "groups/#{group_id}/members?embed=notifications") #.select{|m| m['notifications']['members']}
 
     call_count = 0
     members.each do |group_membership|
       new_notifications = group_membership['notifications']
-      new_notifications['members'] = false
+      new_notifications['members'] = group_membership['status'] != "1"
       new_notifications['photos'] = false
       new_notifications['videos'] = false
       new_notifications['files'] = false
