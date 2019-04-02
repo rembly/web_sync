@@ -56,8 +56,8 @@ class EndorserSync
     return unless valid_data_columns?
 
     # get rows that can be tied to GET
-    version_endorsers = get_revision_data.select(&method(:include_revision_row_in_get?))
-    web_endorsers = get_ready_for_web_data.select(&method(:include_ready_for_web_in_get?))
+    web_endorsers = get_ready_for_web_data #.select(&method(:include_ready_for_web_in_get?))
+    version_endorsers = get_revision_data #.select(&method(:include_revision_row_in_get?))
 
     sf_endorsers = get_linked_sf_endorsers
     by_fa_id = sf_endorsers.index_by(&:Form_Assembly_Reference_Id__c)
@@ -68,30 +68,32 @@ class EndorserSync
 
     web_endorsers.each_with_index do |endorser, i|
       fa_id = endorser[RESPONSE_URL].to_s.split('/')&.last
+      updated_fa_ids << fa_id
       
-      if(by_fa_id.has_key?(fa_id))
+      if(include_ready_for_web_in_get?(endorser) && by_fa_id.has_key?(fa_id))
         sf_row = by_fa_id[fa_id]
-        updated_fa_ids << fa_id
         sheet_updates << {range: READY_FOR_WEB_UPDATE_RANGE % [i + 2, i + 2], values: [[sf_row.Id.to_s]]}
       end
     end
 
     version_endorsers.each_with_index do |endorser, i|
       fa_id = endorser[RESPONSE_URL].to_s.split('/')&.last
-      binding.pry if i > 479
-      if(by_fa_id.has_key?(fa_id) && updated_fa_ids.exclude?(fa_id))
-        sf_row = by_fa_id[fa_id]
-        sheet_updates << {range: REVISION_UPDATE_RANGE % [i + 2, i + 2], values: [[sf_row.Id.to_s]]}
+
+      if(include_revision_row_in_get?(endorser) && by_fa_id.has_key?(fa_id))
+        if(updated_fa_ids.exclude?(fa_id))
+          sf_row = by_fa_id[fa_id]
+          sheet_updates << {range: REVISION_UPDATE_RANGE % [i + 2, i + 2], values: [[sf_row.Id.to_s]]}
+        else
+          sheet_updates << {range: REVISION_UPDATE_RANGE % [i + 2, i + 2], values: [['Ready for Web']]}
+        end
       end
     end
 
     batch_update_values = Google::Apis::SheetsV4::BatchUpdateValuesRequest.new(data: sheet_updates, value_input_option: 'USER_ENTERED')
-    binding.pry
     res = google_client.batch_update_values(ENDORSER_SHEET_ID, batch_update_values)
 
     if res.total_updated_rows != sheet_updates.size
       LOG.error("Total updated rows did not equal update: #{sheet_updates.to_json}")
-      binding.pry
     end
     # TODO: old rows will not be synced only ones where FA ID is set in GET
   end
