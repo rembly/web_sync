@@ -7,14 +7,12 @@ require_relative 'web_sync/mysql_connection'
 require_relative './salesforce_sync'
 require 'pry'
 
-# Interact with Google API
-
 class EndorserSync
   APPLICATION_NAME = ENV['GOOGLE_APP_NAME']
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync_endorsers.log'))
   ENDORSER_JSON = File.join(File.dirname(__FILE__), '..', 'data', 'endorsers.json')
-  # ENDORSER_SHEET_ID = ENV['GOOGLE_ENDORSER_SHEET_ID']
-  ENDORSER_SHEET_ID = ENV['GOOGLE_ENDORSER_SHEET_COPY_ID']
+  ENDORSER_SHEET_ID = ENV['GOOGLE_ENDORSER_SHEET_ID']
+  # ENDORSER_SHEET_ID = ENV['GOOGLE_ENDORSER_SHEET_COPY_ID']
   # Ready for Web
   READY_FOR_WEB_DATA_RANGE = 'Ready for Web!A2:AH'.freeze
   READY_FOR_WEB_HEADING_RANGE = 'Ready for Web!A1:AH1'.freeze
@@ -22,22 +20,21 @@ class EndorserSync
   READY_FOR_WEB_COLUMN_HEADINGS = ['Submitted Date','Completion Time','Completion Status',"I'm Endorsing As...",'First Name ','Last Name','Title','Email',
      'Phone','Organization Name','Organization Name','Website URL','Address Line 1','Address Line 1','Address Line 2','City','State',
      'Postal Code','Organization Type','# of U.S. employees','Population','Comments (not required)','Please confirm','Response Url','Referrer',
-     'Ip Address','Unprotected File List','Reviewer','Status','Notes','Featured Endorser', 'Final Staff Check', 'Link to Resource' 'Added to GET']
+     'Ip Address','Unprotected File List','Reviewer','Status','Notes','Featured Endorser', 'Final Staff Check', 'Link to Resource', 'Added to GET']
   
   # Revision Tab
   REVISION_DATA_RANGE = 'Revision: 131!A2:AE'.freeze
   REVISION_HEADING_RANGE = 'Revision: 131!A1:AE1'.freeze
   REVISION_UPDATE_RANGE = "'Revision: 131'!AE%i:AE%i".freeze
-  REVISION_COLUMN_HEADINGS = ['Submitted Date', 'Completion Time', 'Completion Status', "I'm Endorsing As...", 'First Name', 'Last Name', 'Job Title',
+  REVISION_COLUMN_HEADINGS = ['Submitted Date', 'Completion Time', 'Completion Status', "I'm Endorsing As...", 'First Name ', 'Last Name', 'Job Title',
     'Email', 'Phone', 'Organization Name', 'Organization Name', 'Website URL', 'Address Line 1', 'Address Line 1', 'Address Line 2',
     'City', 'State', 'Postal Code', 'Organization Type', '# of U.S. employees', 'Population', 'Comments (not required)',
     'Please confirm', 'Response Url', 'Referrer', 'Ip Address', 'Unprotected File List', 'Reviewer', 'Status', 'Notes', 'Added to GET']
-  
 
   WP_ENDORSER_TABLE = 'bill_endorsers'
-
   FINAL_STAFF_CHECK = 31
   RESPONSE_URL = 23
+  STATUS_COL = 28
 
   attr_accessor :google_client
   attr_accessor :token
@@ -51,13 +48,13 @@ class EndorserSync
     @sf = SalesforceSync.new
   end
 
-  # Do I 'guess' endorsers who aren't tied?
+  # **** EndorserSync.new.sync_endorsers_to_get
   def sync_endorsers_to_get
     return unless valid_data_columns?
 
     # get rows that can be tied to GET
-    web_endorsers = get_ready_for_web_data #.select(&method(:include_ready_for_web_in_get?))
-    version_endorsers = get_revision_data #.select(&method(:include_revision_row_in_get?))
+    web_endorsers = get_ready_for_web_data
+    version_endorsers = get_revision_data
 
     sf_endorsers = get_linked_sf_endorsers
     by_fa_id = sf_endorsers.index_by(&:Form_Assembly_Reference_Id__c)
@@ -72,17 +69,21 @@ class EndorserSync
       
       if(include_ready_for_web_in_get?(endorser) && by_fa_id.has_key?(fa_id))
         sf_row = by_fa_id[fa_id]
-        sheet_updates << {range: READY_FOR_WEB_UPDATE_RANGE % [i + 2, i + 2], values: [[sf_row.Id.to_s]]}
+        updated = update_get(endorser, sf_row)
+        in_progress = !completed_status?(endorser)
+        sheet_updates << {range: READY_FOR_WEB_UPDATE_RANGE % [i + 2, i + 2], values: [[in_progress ? 'in progress' : sf_row.Id.to_s]]}
       end
     end
-
+    
     version_endorsers.each_with_index do |endorser, i|
       fa_id = endorser[RESPONSE_URL].to_s.split('/')&.last
-
+      
       if(include_revision_row_in_get?(endorser) && by_fa_id.has_key?(fa_id))
         if(updated_fa_ids.exclude?(fa_id))
           sf_row = by_fa_id[fa_id]
-          sheet_updates << {range: REVISION_UPDATE_RANGE % [i + 2, i + 2], values: [[sf_row.Id.to_s]]}
+          updated = update_get(endorser, sf_row)
+          in_progress = !completed_status?(endorser)
+          sheet_updates << {range: REVISION_UPDATE_RANGE % [i + 2, i + 2], values: [[in_progress ? 'in progress' : sf_row.Id.to_s]]}
         else
           sheet_updates << {range: REVISION_UPDATE_RANGE % [i + 2, i + 2], values: [['Ready for Web']]}
         end
@@ -95,7 +96,83 @@ class EndorserSync
     if res.total_updated_rows != sheet_updates.size
       LOG.error("Total updated rows did not equal update: #{sheet_updates.to_json}")
     end
-    # TODO: old rows will not be synced only ones where FA ID is set in GET
+  end
+
+  # Compare the SF record vs the sheet record. If any fields are different, save those changes to the GET
+  def update_get(row, sf_row)
+    type = row[3]
+    final_staff_check = row[FINAL_STAFF_CHECK].to_s.strip.casecmp('x').zero?
+    # handle municipal????
+    return unless ['A prominent individual', 'An organization'].include?(type)
+    is_org = (type =='An organization')
+
+    street = [row[12].to_s.strip + row[13].to_s.strip, row[14].to_s.strip].map(&:strip).reject(&:empty?).join(', ')
+    contact_name = "#{row[4].to_s.strip} #{row[5].to_s.strip}"
+    name = is_org ? row[9].to_s.strip : contact_name
+    status = row[28]
+    sf_org_status = status == 'Verified' ? 'Approved' : sf_row.EndorsementOrg__r.Approval_Status__c
+    sf_end_status = final_staff_check ? 'Posted to Web' : %w[Declined Verified].include?(status) ? status : 'Pending'
+
+    # diff map for org vs indiv vs munic?
+    org_map = {Mailing_City__c: 15, Email__c: 7, Primary_Contact_Title__c: 6, Phone__c: 8, Mailing_Zip_Postal_Code__c: 17}
+    end_type = is_org ? 'Organizational' : 'Individual'
+    end_map = {City__c: 15, Zip_Postal_Code__c: 17, Contact_Email__c: 7, Contact_Title__c: 6, Contact_Phone__c: 8, Comments__c: 21}
+
+    # only update if a field changed
+    sf_org = sf_row.EndorsementOrg__r
+    org_changed = false
+    org_map.each do |sf_field, row_index|
+      sheet_val = row[row_index].to_s
+      org_changed = set_if_different(sf_org, sf_field, sheet_val.to_s.strip) || org_changed
+    end
+    # non-auto fields
+    org_changed = set_if_different(sf_org, :Approval_Status__c, sf_org_status) || org_changed
+    org_changed = set_if_different(sf_org, :Endorser_Type__c, end_type) || org_changed
+    org_changed = set_if_different(sf_org, :Name__c, name) || org_changed
+    org_changed = set_if_different(sf_org, :Mailing_Street__c, street) || org_changed
+    org_changed = set_if_different(sf_org, :Primary_Contact_Name__c, contact_name) || org_changed
+    org_changed = set_if_different(sf_org, :Website__c, 'http://' + row[11]) || org_changed
+    org_changed = set_if_different(sf_org, :Population__c, row[20].to_i.to_f) || org_changed if row[20].present?
+    org_changed = set_if_different(sf_org, :Employees__c, row[19].to_i.to_f) || org_changed if row[19].present?
+    
+    if org_changed
+      LOG.info("SF Endorser Org #{sf_org.Id} Changed: #{sf_org}")
+      did_save = sf_org.save!
+      LOG.error("Failed to save: #{sf_org}") unless did_save
+    end
+    
+    # update endorsement
+    end_changed = false
+    end_map.each do |sf_field, row_index|
+      sheet_val = row[row_index].to_s
+      end_changed = set_if_different(sf_row, sf_field, sheet_val.to_s.strip) || end_changed
+    end
+    end_changed = set_if_different(sf_row, :Endorser_Type__c, end_type) || end_changed
+    end_changed = set_if_different(sf_row, :Verification_Status__c, sf_end_status) || end_changed
+    end_changed = set_if_different(sf_row, :Address__c, street) || end_changed
+    end_changed = set_if_different(sf_row, :Org_Ind_Name__c, name) || end_changed
+    end_changed = set_if_different(sf_row, :Contact_Name__c, name) || end_changed
+
+    if end_changed
+      LOG.info("SF Endorsement #{sf_row.Id} Changed: #{sf_row}")
+      did_save = sf_row.save!
+      LOG.error("Failed to save: #{sf_row}") unless did_save
+    end
+    
+    end_changed || org_changed
+  end
+  
+  # this will determine if a field is different between the SF and Sheet records
+  # returns true if a field was updated
+  def set_if_different(sf_row, field, sheet_val)
+    sf_val = sf_row.send(field)
+    sheet_val = sheet_val.to_s.strip
+    if(sf_val.to_s != sheet_val)
+      LOG.info("ID: #{sf_row.Id} - SF Field #{field} updated from #{sf_val} to #{sheet_val} for #{sf_row}")
+      sf_row.send(field.to_s + '=', sheet_val)
+      return true
+    end
+    false
   end
 
   def sync_endorsers_to_wordpress
@@ -121,17 +198,19 @@ class EndorserSync
 
 
   def include_row_in_wp?(row)
-    row[31].to_s.strip.casecmp('x').zero?
+    row[FINAL_STAFF_CHECK].to_s.strip.casecmp('x').zero?
   end
 
   def include_ready_for_web_in_get?(row)
-    row[33].to_s.strip.empty?
+    row[33].to_s.strip.length != 18 || !completed_status?(row)
   end
 
   def include_revision_row_in_get?(row)
-    #29 - Added to get #27 - Status
-    # Only if verified? Only if not added to GET?
-    row[30].to_s.strip.length < 2 && (row[28].to_s.strip.casecmp('Verified').zero? || row[28].to_s.strip.casecmp('Declined').zero?)
+    row[30].to_s.strip.length != 18 || !completed_status?(row)
+  end
+
+  def completed_status?(endorser)
+    endorser[STATUS_COL].to_s.strip.casecmp('Verified').zero? || endorser[STATUS_COL].to_s.strip.casecmp('Declined').zero?
   end
 
   def endorser_row(row)
@@ -166,6 +245,7 @@ class EndorserSync
   # column headings must match and be in the same order to ensure sync works correctly
   def valid_data_columns?
     if column_headings_ready_for_web != READY_FOR_WEB_COLUMN_HEADINGS || column_headings_revision != REVISION_COLUMN_HEADINGS
+      binding.pry
       LOG.error('Endorser spreadsheet columns have been re-arranged or modified. Unable to sync')
     end
 
@@ -180,6 +260,7 @@ class EndorserSync
     google_client.get_spreadsheet_values(ENDORSER_SHEET_ID, REVISION_HEADING_RANGE)&.values&.first
   end
 
+
   def get_sf_endorsers_json
    endorsers = get_sf_endorsers.to_a.map do |endorser|
       {name: endorser.Org_Ind_Name__c, type: endorser.Endorser_Type__c, state: endorser.State_Province__r&.Abbreviation__c.to_s, 
@@ -192,9 +273,14 @@ class EndorserSync
   # NOTE: right now I'm only grabbing linked endorsements (ones that have Form_Assembly_Reference_Id__c)
   def get_linked_sf_endorsers
     supporters = sf.client.query(<<-QUERY)
-      SELECT Id, Form_Assembly_Reference_Id__c, City__c, Date__c, EndorsementOrg__r.Name, Endorser_Type__c, Org_Ind_Name__c, State_Province__r.Name, 
+      SELECT Id, Form_Assembly_Reference_Id__c, City__c, Date__c, Endorser_Type__c, Org_Ind_Name__c, State_Province__r.Name, 
         State_Province__r.Abbreviation__c, Zip_Postal_Code__c, EndorsementOrg__r.Congressional_District__c,
-        EndorsementOrg__r.Congressional_District__r.Name
+        EndorsementOrg__r.Congressional_District__r.Name, EndorsementOrg__r.Population__c, EndorsementOrg__r.Employees__c,
+        EndorsementOrg__r.Email__c, EndorsementOrg__r.Primary_Contact_Title__c, EndorsementOrg__r.Phone__c, 
+        Comments__c, Address__c, Contact_Email__c, Contact_Name__c, Contact_Phone__c, Contact_Title__c, EndorsementOrg__r.Website__c,
+        EndorsementOrg__r.Mailing_Zip_Postal_Code__c, EndorsementOrg__r.Mailing_City__c, EndorsementOrg__r.Primary_Contact_Name__c,
+        EndorsementOrg__r.Approval_Status__c, EndorsementOrg__r.Id, EndorsementOrg__r.Mailing_Street__c,
+        EndorsementOrg__r.Endorser_Type__c, EndorsementOrg__r.Name__c, Verification_Status__c
       FROM Endorsement__c
       WHERE Endorsement_Type__c INCLUDES ('Energy Innovation and Carbon Dividend Act') AND Private_From_Endorser__c = 'Public' 
         AND Country__c = 'United States' AND Endorsement_Status__c = 'Signed' 
