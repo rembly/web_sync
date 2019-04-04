@@ -2,12 +2,14 @@ require 'google/apis/sheets_v4'
 require 'googleauth'
 require 'json'
 require 'active_support/all'
+require_relative './web_sync/email_notifier'
 require_relative 'web_sync/oauth_token'
 require_relative 'web_sync/mysql_connection'
 require_relative './salesforce_sync'
 require 'pry'
 
 class EndorserSync
+  EMAIL_NOTIFIER = EmailNotifier.new
   APPLICATION_NAME = ENV['GOOGLE_APP_NAME']
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'sync_endorsers.log'))
   ENDORSER_JSON = File.join(File.dirname(__FILE__), '..', 'data', 'endorsers.json')
@@ -140,7 +142,10 @@ class EndorserSync
     if org_changed
       LOG.info("SF Endorser Org #{sf_org.Id} Changed: #{sf_org}")
       did_save = sf_org.save!
-      LOG.error("Failed to save: #{sf_org}") unless did_save
+      unless did_save
+        LOG.error("Failed to save: #{sf_org}")
+        send_email("Failed to save: #{sf_org}")
+      end
     end
     
     # update endorsement
@@ -158,7 +163,10 @@ class EndorserSync
     if end_changed
       LOG.info("SF Endorsement #{sf_row.Id} Changed: #{sf_row}")
       did_save = sf_row.save!
-      LOG.error("Failed to save: #{sf_row}") unless did_save
+      unless did_save
+        LOG.error("Failed to save: #{sf_row}")
+        send_email("Failed to save: #{sf_row}")
+      end
     end
     
     end_changed || org_changed
@@ -248,7 +256,9 @@ class EndorserSync
   def valid_data_columns?
     revision_missmatch = get_revision_sheet_numbers.any?{|number| column_headings_revision(number) != REVISION_COLUMN_HEADINGS }
     if column_headings_ready_for_web != READY_FOR_WEB_COLUMN_HEADINGS || revision_missmatch
-      LOG.error('Endorser spreadsheet columns have been re-arranged or modified. Unable to sync')
+      message = 'Endorser spreadsheet columns have been re-arranged or modified. Unable to sync'
+      LOG.error(message)
+      send_email(message)
     end
     true
   end
@@ -304,6 +314,11 @@ class EndorserSync
       WHERE Endorsement_Type__c INCLUDES ('Energy Innovation and Carbon Dividend Act') AND Private_From_Endorser__c = 'Public'AND Country__c = 'United States' 
          AND Endorsement_Status__c = 'Signed' AND (State_Province__r.Abbreviation__c <> null OR EndorsementOrg__r.Congressional_District__r.Name <> null)
     QUERY
+  end
+
+  def send_email(message)
+    to = 'bryan.hermsen@citizensclimate.org'
+    EMAIL_NOTIFIER.send_email(subject: 'Endorser Sync Error', body: message, to: to)
   end
 
   private
