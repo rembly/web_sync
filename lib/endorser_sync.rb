@@ -22,10 +22,10 @@ class EndorserSync
      'Postal Code','Organization Type','# of U.S. employees','Population','Comments (not required)','Please confirm','Response Url','Referrer',
      'Ip Address','Unprotected File List','Reviewer','Status','Notes','Featured Endorser', 'Final Staff Check', 'Link to Resource', 'Added to GET']
   
-  # Revision Tab
-  REVISION_DATA_RANGE = 'Revision: 131!A2:AE'.freeze
-  REVISION_HEADING_RANGE = 'Revision: 131!A1:AE1'.freeze
-  REVISION_UPDATE_RANGE = "'Revision: 131'!AE%i:AE%i".freeze
+  # Revision Tab - The ranges are templated to work with all revision tabs
+  REVISION_DATA_RANGE = 'Revision: %i!A2:AE'.freeze
+  REVISION_HEADING_RANGE = 'Revision: %i!A1:AE1'.freeze
+  REVISION_UPDATE_RANGE = "'Revision: %i'!AE%i:AE%i".freeze
   REVISION_COLUMN_HEADINGS = ['Submitted Date', 'Completion Time', 'Completion Status', "I'm Endorsing As...", 'First Name ', 'Last Name', 'Job Title',
     'Email', 'Phone', 'Organization Name', 'Organization Name', 'Website URL', 'Address Line 1', 'Address Line 1', 'Address Line 2',
     'City', 'State', 'Postal Code', 'Organization Type', '# of U.S. employees', 'Population', 'Comments (not required)',
@@ -40,11 +40,12 @@ class EndorserSync
   attr_accessor :token
   attr_accessor :wp_client
   attr_accessor :sf
+  attr_accessor :revision_sheet_numbers
 
   def initialize(use_production: false)
     @token = OauthToken.google_service_token(access: :read_write)
     @google_client = initialize_google_client(@token)
-    @wp_client = use_production ? MysqlConnection.endorse_production_connection : MysqlConnection.endorse_staging_connection
+    # @wp_client = use_production ? MysqlConnection.endorse_production_connection : MysqlConnection.endorse_staging_connection
     @sf = SalesforceSync.new
   end
 
@@ -54,15 +55,14 @@ class EndorserSync
 
     # get rows that can be tied to GET
     web_endorsers = get_ready_for_web_data
-    version_endorsers = get_revision_data
-
+    
     sf_endorsers = get_linked_sf_endorsers
     by_fa_id = sf_endorsers.index_by(&:Form_Assembly_Reference_Id__c)
 
     # keep track of ready_for_web updates.. we don't update revision rows if they've been moved to ready for web
     updated_fa_ids = []
     sheet_updates = []
-
+    
     web_endorsers.each_with_index do |endorser, i|
       fa_id = endorser[RESPONSE_URL].to_s.split('/')&.last
       updated_fa_ids << fa_id
@@ -75,17 +75,20 @@ class EndorserSync
       end
     end
     
-    version_endorsers.each_with_index do |endorser, i|
-      fa_id = endorser[RESPONSE_URL].to_s.split('/')&.last
-      
-      if(include_revision_row_in_get?(endorser) && by_fa_id.has_key?(fa_id))
-        if(updated_fa_ids.exclude?(fa_id))
-          sf_row = by_fa_id[fa_id]
-          updated = update_get(endorser, sf_row)
-          in_progress = !completed_status?(endorser)
-          sheet_updates << {range: REVISION_UPDATE_RANGE % [i + 2, i + 2], values: [[in_progress ? 'in progress' : sf_row.Id.to_s]]}
-        else
-          sheet_updates << {range: REVISION_UPDATE_RANGE % [i + 2, i + 2], values: [['Ready for Web']]}
+    get_revision_sheet_numbers.each do |revision_number|
+      version_endorsers = get_revision_data(revision_number)
+      version_endorsers.each_with_index do |endorser, i|
+        fa_id = endorser[RESPONSE_URL].to_s.split('/')&.last
+
+        if(include_revision_row_in_get?(endorser) && by_fa_id.has_key?(fa_id))
+          if(updated_fa_ids.exclude?(fa_id))
+            sf_row = by_fa_id[fa_id]
+            updated = update_get(endorser, sf_row)
+            in_progress = !completed_status?(endorser)
+            sheet_updates << {range: REVISION_UPDATE_RANGE % [revision_number, i + 2, i + 2], values: [[in_progress ? 'in progress' : sf_row.Id.to_s]]}
+          else
+            sheet_updates << {range: REVISION_UPDATE_RANGE % [revision_number, i + 2, i + 2], values: [['Ready for Web']]}
+          end
         end
       end
     end
@@ -113,7 +116,6 @@ class EndorserSync
     sf_org_status = status == 'Verified' ? 'Approved' : sf_row.EndorsementOrg__r.Approval_Status__c
     sf_end_status = final_staff_check ? 'Posted to Web' : %w[Declined Verified].include?(status) ? status : 'Pending'
 
-    # diff map for org vs indiv vs munic?
     org_map = {Mailing_City__c: 15, Email__c: 7, Primary_Contact_Title__c: 6, Phone__c: 8, Mailing_Zip_Postal_Code__c: 17}
     end_type = is_org ? 'Organizational' : 'Individual'
     end_map = {City__c: 15, Zip_Postal_Code__c: 17, Contact_Email__c: 7, Contact_Title__c: 6, Contact_Phone__c: 8, Comments__c: 21}
@@ -151,7 +153,7 @@ class EndorserSync
     end_changed = set_if_different(sf_row, :Verification_Status__c, sf_end_status) || end_changed
     end_changed = set_if_different(sf_row, :Address__c, street) || end_changed
     end_changed = set_if_different(sf_row, :Org_Ind_Name__c, name) || end_changed
-    end_changed = set_if_different(sf_row, :Contact_Name__c, name) || end_changed
+    end_changed = set_if_different(sf_row, :Contact_Name__c, contact_name) || end_changed
 
     if end_changed
       LOG.info("SF Endorsement #{sf_row.Id} Changed: #{sf_row}")
@@ -238,17 +240,16 @@ class EndorserSync
     google_client.get_spreadsheet_values(ENDORSER_SHEET_ID, READY_FOR_WEB_DATA_RANGE).values
   end
 
-  def get_revision_data
-    google_client.get_spreadsheet_values(ENDORSER_SHEET_ID, REVISION_DATA_RANGE).values
+  def get_revision_data(revision_number)
+    google_client.get_spreadsheet_values(ENDORSER_SHEET_ID, REVISION_DATA_RANGE % revision_number).values
   end
 
   # column headings must match and be in the same order to ensure sync works correctly
   def valid_data_columns?
-    if column_headings_ready_for_web != READY_FOR_WEB_COLUMN_HEADINGS || column_headings_revision != REVISION_COLUMN_HEADINGS
-      binding.pry
+    revision_missmatch = get_revision_sheet_numbers.any?{|number| column_headings_revision(number) != REVISION_COLUMN_HEADINGS }
+    if column_headings_ready_for_web != READY_FOR_WEB_COLUMN_HEADINGS || revision_missmatch
       LOG.error('Endorser spreadsheet columns have been re-arranged or modified. Unable to sync')
     end
-
     true
   end
 
@@ -256,10 +257,16 @@ class EndorserSync
     google_client.get_spreadsheet_values(ENDORSER_SHEET_ID, READY_FOR_WEB_HEADING_RANGE)&.values&.first
   end
 
-  def column_headings_revision
-    google_client.get_spreadsheet_values(ENDORSER_SHEET_ID, REVISION_HEADING_RANGE)&.values&.first
+  def column_headings_revision(revision_number)
+    google_client.get_spreadsheet_values(ENDORSER_SHEET_ID, REVISION_HEADING_RANGE % revision_number)&.values&.first
   end
 
+  def get_revision_sheet_numbers
+    revision_regex = /Revision: (\d*)/
+    @revision_sheet_numbers ||= google_client.get_spreadsheet(ENDORSER_SHEET_ID).sheets.map(&:properties).map(&:title)
+                  .map{|t| t.match(revision_regex)&.captures&.first}.compact
+    @revision_sheet_numbers
+  end
 
   def get_sf_endorsers_json
    endorsers = get_sf_endorsers.to_a.map do |endorser|
