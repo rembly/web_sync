@@ -201,7 +201,9 @@ class EndorserSync
 
       LOG.info("Synchronized #{current_endorsers.size} endorsers to Wordpress")
     rescue Mysql2::Error => e
-      LOG.error("Unable to synchronize endorsers to Wordpress: #{e.message}")
+      message = "Unable to synchronize endorsers to Wordpress: #{e.message}"
+      LOG.error(message)
+      send_email(message)
       LOG.error(e.backtrace.inspect)
     end
   end
