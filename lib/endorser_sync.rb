@@ -257,10 +257,12 @@ class EndorserSync
   # column headings must match and be in the same order to ensure sync works correctly
   def valid_data_columns?
     revision_missmatch = get_revision_sheet_numbers.any?{|number| column_headings_revision(number) != REVISION_COLUMN_HEADINGS }
+
     if column_headings_ready_for_web != READY_FOR_WEB_COLUMN_HEADINGS || revision_missmatch
       message = 'Endorser spreadsheet columns have been re-arranged or modified. Unable to sync'
       LOG.error(message)
       send_email(message)
+      return false
     end
     true
   end
