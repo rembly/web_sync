@@ -47,7 +47,7 @@ class EndorserSync
   def initialize(use_production: false)
     @token = OauthToken.google_service_token(access: :read_write)
     @google_client = initialize_google_client(@token)
-    # @wp_client = use_production ? MysqlConnection.endorse_production_connection : MysqlConnection.endorse_staging_connection
+    @wp_client = use_production ? MysqlConnection.endorse_production_connection : MysqlConnection.endorse_staging_connection
     @sf = SalesforceSync.new
   end
 
@@ -120,7 +120,7 @@ class EndorserSync
 
     org_map = {Mailing_City__c: 15, Email__c: 7, Primary_Contact_Title__c: 6, Phone__c: 8, Mailing_Zip_Postal_Code__c: 17}
     end_type = is_org ? 'Organizational' : 'Individual'
-    end_map = {City__c: 15, Zip_Postal_Code__c: 17, Contact_Email__c: 7, Contact_Title__c: 6, Contact_Phone__c: 8, Comments__c: 21}
+    end_map = {City__c: 15, Zip_Postal_Code__c: 17, Contact_Email__c: 7, Contact_Phone__c: 8, Comments__c: 21}
 
     # only update if a field changed
     sf_org = sf_row.EndorsementOrg__r
@@ -154,10 +154,12 @@ class EndorserSync
       sheet_val = row[row_index].to_s
       end_changed = set_if_different(sf_row, sf_field, sheet_val.to_s.strip) || end_changed
     end
+    contact_title = [row[6].to_s, row[10].to_s].map(&:strip).reject(&:empty?).join(', ')
     end_changed = set_if_different(sf_row, :Endorser_Type__c, end_type) || end_changed
     end_changed = set_if_different(sf_row, :Verification_Status__c, sf_end_status) || end_changed
     end_changed = set_if_different(sf_row, :Address__c, street) || end_changed
     end_changed = set_if_different(sf_row, :Org_Ind_Name__c, name) || end_changed
+    end_changed = set_if_different(sf_row, :Contact_Title__c, contact_title) || end_changed
     end_changed = set_if_different(sf_row, :Contact_Name__c, contact_name) || end_changed
 
     if end_changed

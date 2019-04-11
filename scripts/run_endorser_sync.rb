@@ -1,4 +1,6 @@
 #!/usr/bin/env ruby
+# frozen_string_literal: true
+
 require_relative '../lib/endorser_sync'
 require_relative '../lib/web_sync/email_notifier'
 LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'endorser_sync.log'))
@@ -6,6 +8,9 @@ LOG = Logger.new(File.join(File.dirname(__FILE__), '..', 'log', 'endorser_sync.l
 begin
   sync = EndorserSync.new
   sync.sync_endorsers_to_get
+  sync.sync_endorsers_to_wordpress
+  sync = EndorserSync.new(use_production: true)
+  sync.sync_endorsers_to_wordpress
 rescue Exception => e
   message = "Failed to update waitlist sheet: #{e.message}: #{e.backtrace.inspect}"
   p message
