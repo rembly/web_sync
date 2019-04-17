@@ -94,7 +94,7 @@ class SwcSync
     File.open(CHAPTER_FILE_LOCATION, 'w') { |f| f.puts(import_string.to_json) }
   end
 
-  # #5 - builds the mapping of SWC group to SF group for import in the SWC group admin page
+  # #5 - builds the mapping of SWC group to SF group for import in the SWC group admin page. Group mapping
   def build_swc_sf_group_map
     groups = sf.client.query('SELECT Id, SWC_Group_ID__c, Name FROM Group__c WHERE SWC_Group_ID__c <> null')
     swc_group_ids = api.call(endpoint: 'groups').map{|grp| grp['id']}.uniq
