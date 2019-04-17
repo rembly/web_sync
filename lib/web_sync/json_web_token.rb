@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require 'rest-client'
 require 'jwt'
 require 'active_support/all'
@@ -19,11 +20,13 @@ class JsonWebToken
   end
 
   def self.swc_token
-    payload = { iss: ENV['SWC_APP_ID'], exp: 120.seconds.from_now.to_i, iat: Time.now.to_i, sub: ENV['SWC_USER_ID'],
+    zone = ActiveSupport::TimeZone.new('Central Time (US & Canada)')
+    exp = (Time.now.in_time_zone(zone) + 120.seconds + ENV['TIME_OFFSET'].to_i).to_i
+    payload = { iss: ENV['SWC_APP_ID'], exp: exp, iat: Time.now.to_i, sub: ENV['SWC_USER_ID'],
                 aud: SWC_URL, scope: 'create delete read update' }
     jwt = JWT.encode(payload, ENV['SWC_SECRET'])
-    response = RestClient.post(SWC_TOKEN_URL, { grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-                                                assertion: jwt }, content_type: 'application/x-www-form-urlencoded')
+    response = RestClient.post(SWC_TOKEN_URL, { grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }, 
+      content_type: 'application/x-www-form-urlencoded')
     JSON.parse(response.body).dig('access_token')
   end
 end
