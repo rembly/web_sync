@@ -32,10 +32,10 @@ class GroupSync
     groups_with_zip.each do |group|
       sf_group = sf_groups[group['id']]
       swc_zip = group['address']['zip'].to_s.strip
-
-      next unless sf_group&.Postal_Code_Data__r&.Name.to_s.present? && (sf_group&.Postal_Code_Data__r&.Name.to_s != swc_zip) && swc_zip.present?
-
       zip = postal_codes[swc_zip]
+
+      next unless zip.present? && (sf_group&.Postal_Code_Data__r&.Name.to_s != swc_zip)
+
       LOG.info("Group #{sf_group&.Name} (#{sf_group&.Id}) zip #{sf_group&.Postal_Code_Data__r&.Name} <> #{swc_zip} for #{group['name']} - #{group['id']}. Zip to set: #{zip.Id}")
       # sf_group.Postal_Code_Data__c = zip.Id
       # sf_group.save
