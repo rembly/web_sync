@@ -37,8 +37,8 @@ class GroupSync
       next unless zip.present? && (sf_group&.Postal_Code_Data__r&.Name.to_s != swc_zip)
 
       LOG.info("Group #{sf_group&.Name} (#{sf_group&.Id}) zip #{sf_group&.Postal_Code_Data__r&.Name} <> #{swc_zip} for #{group['name']} - #{group['id']}. Zip to set: #{zip.Id}")
-      # sf_group.Postal_Code_Data__c = zip.Id
-      # sf_group.save
+      sf_group.Postal_Code_Data__c = zip.Id
+      sf_group.save
     end
   end
 
