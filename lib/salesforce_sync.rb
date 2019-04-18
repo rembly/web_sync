@@ -60,7 +60,7 @@ class SalesforceSync
     contacts = @client.query(<<-QUERY)
       SELECT #{SELECT_FIELDS.join(', ')}
       FROM Contact
-      WHERE Intro_Call_RSVP_Date__c != null AND Intro_Call_RSVP_Date__c >= LAST_N_DAYS:30
+      WHERE Intro_Call_RSVP_Date__c != null AND Intro_Call_RSVP_Date__c >= LAST_N_DAYS:1
         AND HasOptedOutOfEmail= FALSE
         AND (#{one_field_present_for(EMAIL_FIELDS)})
         AND (#{all_fields_present_for(REQUIRED_FIELDS)})
@@ -177,7 +177,7 @@ class SalesforceSync
     quoted_list = email_list.collect { |email| "'#{email}'" }.join(', ')
     EMAIL_FIELDS.collect { |field_name| "#{field_name} IN (#{quoted_list})" }.join(' OR ')
   end
-  
+
   private
 
   # returning US-formatted numbers
