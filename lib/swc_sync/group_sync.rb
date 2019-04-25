@@ -6,6 +6,7 @@ require 'csv'
 require_relative '../web_sync/json_web_token'
 require_relative '../web_sync/throttled_api_client'
 require_relative '../salesforce_sync'
+require_relative '../web_sync/email_notifier'
 
 class GroupSync
   LOG = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'swc_group_sync.log'))
@@ -27,12 +28,24 @@ class GroupSync
     swc_chapters = get_swc_chapters
 
     # should I write the zip back to SWC if SWC is blank?
-    groups_with_zip = swc_chapters.select { |g| g.dig('address').dig('zip').present? && postal_codes.key?(g.dig('address').dig('zip').to_s.strip) }
+    groups_with_zip = swc_chapters.select do |g|
+      # only for US postal codes
+      g.dig('address').present? && g.dig('address').dig('zip').present? && g.dig('address').dig('country') == 'USA'
+    end
+
+    missing_postal_codes = []
 
     groups_with_zip.each do |group|
       sf_group = sf_groups[group['id']]
       swc_zip = group['address']['zip'].to_s.strip
       zip = postal_codes[swc_zip]
+
+      if zip.blank?
+        message = "No SF postal code for #{swc_zip}, Group #{group['name']}, ID: #{group['id']}"
+        LOG.info(message)
+        missing_postal_codes << message
+        next
+      end
 
       next unless zip.present? && (sf_group&.Postal_Code_Data__r&.Name.to_s != swc_zip)
 
@@ -40,6 +53,8 @@ class GroupSync
       sf_group.Postal_Code_Data__c = zip.Id
       sf_group.save
     end
+
+    send_missing_zips(missing_postal_codes) if missing_postal_codes.any?
   end
 
   def get_swc_chapters
@@ -59,5 +74,10 @@ class GroupSync
       SELECT Id, Name, City__c, State_Province__r.Abbreviation__c
       FROM Postal_Code__c
     QUERY
+  end
+
+  def send_missing_zips(messages)
+    to = 'bryan.hermsen@citizensclimate.org'
+    EmailNotifier.new.send_email(subject: 'Missing Postal Codes', body: "Missing postal Codes: \n#{messages.join('\n')}", to: to)
   end
 end
