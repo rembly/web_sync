@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'google/apis/sheets_v4'
 require 'googleauth'
 require 'json'
@@ -12,18 +14,21 @@ class WaitListUpdate
   # WAIT_LIST_SHEET_ID = ENV['CONFERENCE_WAIT_LIST_COPY_SHEET_ID']
   WAIT_LIST_SHEET_ID = ENV['CONFERENCE_WAIT_LIST_SHEET_ID']
   # ON COLUMN CHANGE
-  WAIT_LIST_DATA_RANGE = "'Data 2019'!A2:Y308".freeze
-  COLUMN_HEADING_RANGE = "'Data 2019'!A1:Y".freeze
-  UPDATE_RANGE = "'Data 2019'!T%i:Y%i".freeze
-  COLUMN_HEADINGS = ['Timestamp', 'Priority', 'Notes by MM/MP', 'MP part', 'First Name', 'Last Name', 'Email Address', 'MM Sent Email', 'Registered Lobby day?',
-    'Phone Number', 'Amy 1 mtg', 'Congressional District', '# of Constituents Attending from CD', 'Are you under 18?',
-    'Please add any additional information', 'Registered Conference only?', 'Do you have a chaperone?', 'Who is your chaperone?', 'Are they registered for the conference already?',
-    'Group Leader', 'Primary Liaison', 'Other Liaison', 'Person of Color', 'Political Affiliation', 'SFID']
+  WAIT_LIST_DATA_RANGE = "'Data 2019'!A2:AF308"
+  COLUMN_HEADING_RANGE = "'Data 2019'!A1:AF"
+  UPDATE_RANGE = "'Data 2019'!AA%i:AF%i"
+
+  COLUMN_HEADINGS = ['Timestamp', 'Priority', 'Notes by MM/MP', 'MP part', 'First Name', 'Last Name', 'Email Address', 'MM Sent Email', 'Registered Lobby day?', 'Phone Number', 'Amy 1 mtg',
+                     'Congressional District', '# of Constituents Attending from CD', 'Are you under 18?', 'Please add any additional information', 'Registered Conference only?', 'Do you have a chaperone?',
+                     'Who is your chaperone?', 'Are they registered for the conference already?', 'What is your Congressional District? (Example: AA00)', 'Mobile Phone while in DC (numbers only, no dashes)',
+                     'All Lobby Day participants must have completed Climate Advocate Training. Have you already completed this training?',
+                     'Do you plan to attend the Climate Advocate Training during the conference?', 'I am available to lobby from 8:30 am Tuesday until:', '', '',
+                     'Group Leader', 'Primary Liaison', 'Other Liaison', 'Person of Color', 'Political Affiliation', 'SFID'].freeze
 
   SELECT_FIELDS = [*SalesforceSync::REQUIRED_FIELDS, *SalesforceSync::EMAIL_FIELDS, *SalesforceSync::PHONE_FIELDS,
-    'Group_Leader_del__c',  'Primary_Liaison_Count__c',  'Backup_Liaison_Count__c', 'Race_Ethnicity__c', 'Political_Affiliation__c']
+                   'Group_Leader_del__c', 'Primary_Liaison_Count__c', 'Backup_Liaison_Count__c', 'Race_Ethnicity__c', 'Political_Affiliation__c'].freeze
 
-  SFID_CELL = 24
+  SFID_CELL = 31
   EMAIL_CELL = 6
   MULTIPLE_MATCHES = :multiple_matches
   NO_MATCHES = :no_matches
@@ -53,7 +58,7 @@ class WaitListUpdate
     update = sheet_data.values.each_with_object([]).with_index do |(row, arr), i|
       if row_to_update?(row)
         # TODO: ON COLUMN CHANGE
-        values = row.slice(19..-1)
+        values = row.slice(26..-1)
         sf_record = get_matching_sf_record(row, sf_list)
         if sf_record == NO_MATCHES || sf_record == MULTIPLE_MATCHES
           values[5] = 'No Match Found' if sf_record == NO_MATCHES
@@ -67,7 +72,7 @@ class WaitListUpdate
           values[0] = sf_record.Group_Leader_del__c ? 'TRUE' : 'FALSE'
         end
 
-        arr << {range: UPDATE_RANGE % [i + 2, i + 2], values: [values]}
+        arr << { range: format(UPDATE_RANGE, i + 2, i + 2), values: [values] }
       end
     end
 
@@ -80,14 +85,16 @@ class WaitListUpdate
 
   def get_matching_sf_record(row, sf_list)
     matched_by_email = sf_list.select do |sf_user|
-      SalesforceSync::EMAIL_FIELDS.map(&:to_sym).any?{|email_field| 
-        sf_user.try(email_field).present? && sf_user.try(email_field) == row[EMAIL_CELL] 
-      }
+      SalesforceSync::EMAIL_FIELDS.map(&:to_sym).any? do |email_field|
+        sf_user.try(email_field).present? && sf_user.try(email_field) == row[EMAIL_CELL]
+      end
     end
     # if we have multiple matches match on name
     if matched_by_email.size > 1
-      first, last, phone = row[4], row[5], row[9]
-      matched_by_email.select{|sf_user| sf_user.FirstName == first && sf_user.LastName == last}
+      first = row[4]
+      last = row[5]
+      phone = row[9]
+      matched_by_email.select { |sf_user| sf_user.FirstName == first && sf_user.LastName == last }
       if matched_by_email.size > 1
         LOG.error("Multiple matches found for #{row}: #{matched_by_email}")
         return MULTIPLE_MATCHES
@@ -111,7 +118,7 @@ class WaitListUpdate
   def row_to_update?(row)
     row[0].present? && row[EMAIL_CELL].present? && row[SFID_CELL].blank?
   end
-  
+
   def get_data
     google_client.get_spreadsheet_values(WAIT_LIST_SHEET_ID, WAIT_LIST_DATA_RANGE)
   end

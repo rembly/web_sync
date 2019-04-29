@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require 'active_support/all'
 require 'pry'
 require_relative '../web_sync/json_web_token'
@@ -11,11 +12,13 @@ class SwcActionTeamSync
   LOG = Logger.new(LOG_FILE)
   MEMBER_MAP = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'swc_action_team_members.log'))
   ACTION_TEAM_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', '..', 'data', 'action_team_import.json')
+  SUB_GROUP_FILE_LOCATION = File.join(File.dirname(__FILE__), '..', '..', 'data', 'at_large_import.json')
   ACTION_TEAM_MEMBERS = File.join(File.dirname(__FILE__), '..', '..', 'data', 'action_team_members.json')
   ALREADY_SYNCED = File.join(File.dirname(__FILE__), '..', '..', 'data', 'swc_action_team_sync.1.log')
   GROUP_CHAPTER_CATEGORY = 4
   GROUP_DEFAULT_OWNER = 1
   ACTION_TEAM_CATEGORY = 5
+  SUB_GROUP_CATEGORY = 7
 
   attr_accessor :api
   attr_accessor :sf
@@ -43,18 +46,18 @@ class SwcActionTeamSync
     'strategic-planning' => 985, 'episcopal-action-team' => 981, # group rename 'chinese-action-team' => 980, #group rename
     'lgbtqa-climate' => 1880, 'pathway-to-paris' => 971,
     'ca-climate-policy-team' => 2107
-  }
+  }.freeze
 
   def initialize
     @api = ThrottledApiClient.new(api_url: "https://#{ENV['SWC_AUDIENCE']}/services/4.0/",
-                                logger: LOG, token_method: JsonWebToken.method(:swc_token))
+                                  logger: LOG, token_method: JsonWebToken.method(:swc_token))
     @sf = SalesforceSync.new
     @wp = MysqlConnection.get_connection
-    @user_map = get_user_map
+    # @user_map = get_user_map
   end
 
   def get_users
-    @users.present? ? @users : @users = call(endpoint: 'users', params:{activeOnly: :false})
+    @users.present? ? @users : @users = call(endpoint: 'users', params: { activeOnly: :false })
   end
 
   def action_team_members_for_team(slug: 'pathway-to-paris')
@@ -64,12 +67,13 @@ class SwcActionTeamSync
         JOIN wp_bp_groups_members gm ON g.id = gm.group_id
         JOIN wp_users u ON u.id = gm.user_id
         WHERE slug = '#{slug}'
-      QUERY
-        # WHERE parent_id = 283 AND slug = '#{slug}'
+    QUERY
+    # WHERE parent_id = 283 AND slug = '#{slug}'
   end
 
   def get_team_id(team_names, row)
     return ACTION_TEAM_MAP[row['slug'].to_s] if ACTION_TEAM_MAP.key?(row['slug'].to_s)
+
     action_team = CGI.escape(row['group_name'])
     return team_names[action_team] if team_names.key?(action_team)
   end
@@ -90,12 +94,11 @@ class SwcActionTeamSync
       # next unless user_map.include?(username)
       sf_user = user_map[username]
       updates << [sf_user&.LastName, sf_user&.FirstName, sf_user&.Email&.to_s, member['user_email'], sf_user&.Auto_Congressional_District_From_Address__c,
-        sf_user&.State_Province_Division__c, username]
+                  sf_user&.State_Province_Division__c, username]
     end
     # can do multiple of the same user
     # File.open(ACTION_TEAM_MEMBERS, 'w') { |f| f.puts(update.to_json) }
     update
-
   end
 
   # 1 - set action team members via JSON import file for use with import tool
@@ -104,7 +107,7 @@ class SwcActionTeamSync
     # Use all groups.. some 'action teams' in old community will be admin groups in new community
     swc_action_teams = api.call(endpoint: 'groups')
     team_names = swc_action_teams.each_with_object({}) { |team, map| map[team['name']] = team['id']; }
-    # TODO limit by SWC ID present?
+    # TODO: limit by SWC ID present?
     # sf_community_users = sf.client.query("SELECT Id, FirstName, LastName, Email, SWC_User_ID__c, CCL_Community_Username__c FROM Contact WHERE CCL_Community_Username__c <> '' AND SWC_User_ID__c <> 0")
     # user_logins = sf_community_users.each_with_object({}) { |user, map| map[user.CCL_Community_Username__c] = user; }
     update = action_members.each_with_object([]) do |member, updates|
@@ -113,36 +116,37 @@ class SwcActionTeamSync
       # action_team = CGI.escape(member['group_name'])
       team_id = get_team_id(team_names, member)
       next unless user_map.include?(username) && team_id.present?
+
       sf_user = user_map[username]
       updates << { '*_email_address': sf_user.Email.to_s.gsub('+', '%2B'), '*_username': sf_user.FirstName + ' ' + sf_user.LastName,
-                  '*_first_name': sf_user.FirstName, '*_last_name': sf_user.LastName, 'o_groups': team_id }
+                   '*_first_name': sf_user.FirstName, '*_last_name': sf_user.LastName, 'o_groups': team_id }
     end
     # can do multiple of the same user
     File.open(ACTION_TEAM_MEMBERS, 'w') { |f| f.puts(update.to_json) }
   end
 
   def get_sf_user(member)
-    # user = @sf_users.find{|user| user.CCL_Community_Username__c == member['user_login'] || 
-    #   user.CCL_Community_Username__c == member['user_nicename'] || 
+    # user = @sf_users.find{|user| user.CCL_Community_Username__c == member['user_login'] ||
+    #   user.CCL_Community_Username__c == member['user_nicename'] ||
     #   user.CCL_Community_Username__c == member['display_name'] ||
     #   user.Email = member['Email']
     # }
     # LOG.warn("Can't match WP user #{member['user_login']} - #{member['Email']}") if user.nil?
     # user
-    return @user_map[member['user_login']] || @user_map[member['user_nicename']] || @user_map[member['display_name']]
+    @user_map[member['user_login']] || @user_map[member['user_nicename']] || @user_map[member['display_name']]
   end
 
   def set_missing_action_team_members_api(group_slug: 'ca-climate-policy-team', group_id: 2107)
     action_members = action_team_members_for_team(slug: group_slug)
-    sf_members = action_members.map(&method(:get_sf_user)).compact.map{|sm| sm.SWC_User_ID__c.to_i.to_s}
-    current_members = api.call(endpoint: "groups/#{group_id}/members").map{|sm| sm['userId']}
+    sf_members = action_members.map(&method(:get_sf_user)).compact.map { |sm| sm.SWC_User_ID__c.to_i.to_s }
+    current_members = api.call(endpoint: "groups/#{group_id}/members").map { |sm| sm['userId'] }
 
-    members_should_be_in_group = sf_members.select{|swc_id| current_members.exclude?(swc_id)}
+    members_should_be_in_group = sf_members.select { |swc_id| current_members.exclude?(swc_id) }
 
     members_should_be_in_group.each do |member_id|
-      res = api.post(endpoint: "groups/#{group_id}/members", data: {userId: member_id})
+      res = api.post(endpoint: "groups/#{group_id}/members", data: { userId: member_id })
       sleep 0.4
-      LOG.info("sf_id: #{member_id}, group_id: #{group_id}, res: #{res.to_s.gsub("\n", '').strip}")
+      LOG.info("sf_id: #{member_id}, group_id: #{group_id}, res: #{res.to_s.delete("\n").strip}")
     end
   end
 
@@ -164,9 +168,10 @@ class SwcActionTeamSync
       # team_id = get_team_id(team_names, member)
       sf_user = get_sf_user(member)
       next unless sf_user.present? # && team_id.present?
+
       swc_id = sf_user.SWC_User_ID__c.to_i
       # next if already_tied.include?(swc_id.to_i.to_s)
-      api.post(endpoint: "groups/#{team_id}/members", data: {userId: sf_user.SWC_User_ID__c.to_i})
+      api.post(endpoint: "groups/#{team_id}/members", data: { userId: sf_user.SWC_User_ID__c.to_i })
       sleep 0.4
       message = "#{sf_user.SWC_User_ID__c.to_i}, #{team_id} - tied"
       LOG.info(message)
@@ -175,38 +180,39 @@ class SwcActionTeamSync
   end
 
   def set_action_team_admins
-    action_leaders = sf.client.query("SELECT Name, Inactive__c, Leader_1__c, Leader_2__c, Leader_1__r.SWC_User_ID__c, Leader_2__r.SWC_User_ID__c FROM Action_Team__c WHERE Inactive__c = false")
+    action_leaders = sf.client.query('SELECT Name, Inactive__c, Leader_1__c, Leader_2__c, Leader_1__r.SWC_User_ID__c, Leader_2__r.SWC_User_ID__c FROM Action_Team__c WHERE Inactive__c = false')
     swc_action_teams = api.call(endpoint: 'groups', params: { categoryId: ACTION_TEAM_CATEGORY })
     team_names = swc_action_teams.each_with_object({}) { |team, map| map[team['name']] = team['id']; }
 
     action_leaders.each do |team|
       group_id = team_names[CGI.escape(team.Name)]
       next unless group_id.present?
+
       uri = URI.join(API_URL, "groups/#{group_id}/members").to_s
       if team&.Leader_1__r&.SWC_User_ID__c
         res = RestClient.post(uri, { userId: team.Leader_1__r.SWC_User_ID__c.to_i, invited: true, status: 2,
-          notifications: {members: 1, photos: 1, files: 1, forums: 1, videos: 1, events: 1}}.to_json,  content_type: :json, Authorization: "Bearer #{swc_token}") 
-        LOG.info("Created User #{team.Leader_1__r.SWC_User_ID__c.to_i.to_s} for #{team.Name}: #{res}")
+                                     notifications: { members: 1, photos: 1, files: 1, forums: 1, videos: 1, events: 1 } }.to_json, content_type: :json, Authorization: "Bearer #{swc_token}")
+        LOG.info("Created User #{team.Leader_1__r.SWC_User_ID__c.to_i} for #{team.Name}: #{res}")
         sleep TIME_BETWEEN_CALLS
       end
-      if team&.Leader_2__r&.SWC_User_ID__c
-        res = RestClient.post(uri, { userId: team.Leader_2__r.SWC_User_ID__c.to_i, invited: true, status: 2,
-          notifications: {members: 1, photos: 1, files: 1, forums: 1, videos: 1, events: 1}}.to_json, content_type: :json, Authorization: "Bearer #{swc_token}") 
-        LOG.info("Created User #{team.Leader_2__r.SWC_User_ID__c.to_i.to_s} for #{team.Name}: #{res}")
-        sleep TIME_BETWEEN_CALLS
-      end
+      next unless team&.Leader_2__r&.SWC_User_ID__c
+
+      res = RestClient.post(uri, { userId: team.Leader_2__r.SWC_User_ID__c.to_i, invited: true, status: 2,
+                                   notifications: { members: 1, photos: 1, files: 1, forums: 1, videos: 1, events: 1 } }.to_json, content_type: :json, Authorization: "Bearer #{swc_token}")
+      LOG.info("Created User #{team.Leader_2__r.SWC_User_ID__c.to_i} for #{team.Name}: #{res}")
+      sleep TIME_BETWEEN_CALLS
     end
   end
 
   def build_action_team_admin_export
-    action_teams = api.call(endpoint:'groups', params: {categoryId: 5})
-    action_team_ids = action_teams.map{|r| r['id']}
-    action_team_members = action_team_ids.map{|team_id| call(endpoint: "groups/#{team_id}/members", params: {embed: 'user'})}
-    action_team_admins = action_team_members.flatten.select{|member| member['status'].to_i > 1}.map{|admin| admin['user']}
+    action_teams = api.call(endpoint: 'groups', params: { categoryId: 5 })
+    action_team_ids = action_teams.map { |r| r['id'] }
+    action_team_members = action_team_ids.map { |team_id| call(endpoint: "groups/#{team_id}/members", params: { embed: 'user' }) }
+    action_team_admins = action_team_members.flatten.select { |member| member['status'].to_i > 1 }.map { |admin| admin['user'] }
 
     update = action_team_admins.uniq.each_with_object([]) do |admin, updates|
       updates << { '*_email_address': admin['emailAddress'], '*_username': admin['username'],
-                   '*_first_name': admin['firstName'], '*_last_name': admin['lastName'], 
+                   '*_first_name': admin['firstName'], '*_last_name': admin['lastName'],
                    'o_groups': '1878' }
     end
     # can do multiple of the same user
@@ -243,6 +249,20 @@ class SwcActionTeamSync
       'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '1' }
   end
 
+  def get_at_large_json
+    sub_groups = api.call(endpoint: 'groups', params: { categoryId: 7 })
+    at_large = sub_groups.select { |grp| grp['name'].to_s.include?('-+At+Large') }
+    upload = at_large.map(&method(:json_for_swc))
+    File.open(SUB_GROUP_FILE_LOCATION, 'w') { |f| f.puts(upload.to_json) }
+  end
+
+  def json_for_swc(g)
+    { 'o_group_id': g['id'],'*_name': CGI.unescape(g['name'].to_s), '*_description': CGI.unescape(g['description'].to_s),
+      '*_category_id': SUB_GROUP_CATEGORY, '*_owner_user_id': g['ownerId'].to_s, 'o_access_level': g['status'],
+      'o_content_forums': '2', 'o_content_events': '1', 'o_content_photos': '1',
+      'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '1', 'o_content_messages': '2' }
+  end
+
   def active_members_on_old_community
     wp.query(<<-QUERY)
       SELECT  u.user_login, u.user_email, um.meta_key, um.meta_value, cast(um.meta_value as datetime)
@@ -261,7 +281,7 @@ class SwcActionTeamSync
     trainers = get_trainers
     team_id = '1770'
     trainers.each do |trainer|
-      api.post(endpoint: "groups/#{team_id}/members", data: {userId: trainer.SWC_User_ID__c.to_i})
+      api.post(endpoint: "groups/#{team_id}/members", data: { userId: trainer.SWC_User_ID__c.to_i })
       sleep 0.4
       message = "EMERGING GL: #{trainer.SWC_User_ID__c.to_i}, #{team_id} - tied"
       LOG.info(message)
@@ -272,27 +292,26 @@ class SwcActionTeamSync
   def get_trainers
     community_users = sf.client.query(<<-QUERY)
       SELECT Id, FirstName, LastName, Email, SWC_User_ID__c, CCL_Community_Username__c, Trainer__c, Potential_Group_Leader__c
-      FROM Contact 
+      FROM Contact
       WHERE SWC_User_ID__c <> null AND SWC_User_ID__c <> 0 AND Trainer__c = true
     QUERY
   end
 
   def get_user_map
-    # Auto_Congressional_District_From_Address__c, State_Province_Division__c 
+    # Auto_Congressional_District_From_Address__c, State_Province_Division__c
     community_users = sf.client.query(<<-QUERY)
-      SELECT Id, FirstName, LastName, Email, Alternate_Email__c, CCL_Email_Three__c, CCL_Email_Four__c, SWC_User_ID__c, CCL_Community_Username__c 
-      FROM Contact 
+      SELECT Id, FirstName, LastName, Email, Alternate_Email__c, CCL_Email_Three__c, CCL_Email_Four__c, SWC_User_ID__c, CCL_Community_Username__c
+      FROM Contact
       WHERE Is_CCL_Supporter__c = true AND CCL_Community_Username__c <> '' AND SWC_User_ID__c <> 0
     QUERY
 
     @sf_users = community_users
 
-    community_users.inject({}) do |map, user| 
+    community_users.each_with_object({}) do |user, map|
       if user.SWC_User_ID__c.to_i.nonzero?
         # map[user.CCL_Community_Username__c] = user.SWC_User_ID__c.to_i
         map[user.CCL_Community_Username__c] = user
       end
-      map
     end
     # community_users.select{|user| user.SWC_User_ID__c.to_i.nonzero?}
   end
@@ -305,7 +324,7 @@ class SwcActionTeamSync
 
   #   update = action_team_admins.uniq.each_with_object([]) do |admin, updates|
   #     updates << { '*_email_address': admin['emailAddress'], '*_username': admin['username'],
-  #                  '*_first_name': admin['firstName'], '*_last_name': admin['lastName'], 
+  #                  '*_first_name': admin['firstName'], '*_last_name': admin['lastName'],
   #                  'o_groups': '1878' }
   #   end
   #   # can do multiple of the same user
