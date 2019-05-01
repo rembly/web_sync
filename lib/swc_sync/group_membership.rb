@@ -24,26 +24,32 @@ class GroupMembership
   end
 
   def disable_new_member_notifications(group_id: 2131)
-    members = api.call(endpoint: "groups/#{group_id}/members?embed=notifications") # .select{|m| m['notifications']['members']}
-
+    group_ids = [1084, 1247, 1270, 1320, 1336, 1343, 1480, 1894, 1895, 1900, 1901, 1902, 1903, 1904, 1905, 1906, 1907, 1908, 1909,
+                 1911, 1913, 1914, 1927, 1943, 1944, 1945, 1991, 1992, 2000, 2004, 2006, 2007, 2124, 2166, 2172, 2173, 2183]
+    logger = Logger.new(File.join(File.dirname(__FILE__), '..', '..', 'log', 'disable_notifications.log'))
+    
     call_count = 0
-    members.each do |group_membership|
-      new_notifications = group_membership['notifications']
-      new_notifications['members'] = group_membership['status'] != '1'
-      new_notifications['photos'] = false
-      new_notifications['videos'] = false
-      new_notifications['files'] = false
-      new_notifications['messages'] = true # make sure this should really be true
-      data = { userId: group_membership['userId'], status: group_membership['status'], notifications: new_notifications }
+    group_ids.each do |group_id|
+      members = api.call(endpoint: "groups/#{group_id}/members?embed=notifications") # .select{|m| m['notifications']['members']}
 
-      res = api.put(endpoint: "groups/#{group_id}/members/#{group_membership['id']}", data: data)
-      call_count += 1
-      LOG.info("NOTIFICATIONS UPDATED: group_id: #{group_id}, user_id: #{group_membership['userId']}, membership_id: #{group_membership['id']}")
-      next unless call_count >= 100
+      members.each do |group_membership|
+        new_notifications = group_membership['notifications']
+        new_notifications['members'] = group_membership['status'] == '2'
+        new_notifications['photos'] = false
+        new_notifications['videos'] = false
+        new_notifications['files'] = false
+        # new_notifications['messages'] = true # make sure this should really be true
+        data = { userId: group_membership['userId'], status: group_membership['status'], notifications: new_notifications }
 
-      api.reset_token
-      call_count = 0
-      LOG.info('resetting token...')
+        res = api.put(endpoint: "groups/#{group_id}/members/#{group_membership['id']}", data: data)
+        call_count += 1
+        logger.info("NOTIFICATIONS UPDATED: group_id: #{group_id}, user_id: #{group_membership['userId']}, membership_id: #{group_membership['id']}")
+        next unless call_count >= 100
+
+        api.reset_token
+        call_count = 0
+        LOG.info('resetting token...')
+      end
     end
   end
 

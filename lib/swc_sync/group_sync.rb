@@ -80,4 +80,44 @@ class GroupSync
     to = 'bryan.hermsen@citizensclimate.org'
     EmailNotifier.new.send_email(subject: 'Missing Postal Codes', body: "Missing postal Codes: \n#{messages.join('\n')}", to: to)
   end
+
+  # JSON import file 930 / 932 for staging test
+  def get_group_import
+    group_import_file_location = File.join(File.dirname(__FILE__), '..', '..', 'data', 'group_import.csv')
+    groups = [api.call(endpoint: 'groups/931?embed=permissions,notifications,address,news,welcomeMessage,inviteMessage')]
+    # groups = api.call(endpoint: 'groups?embed=permissions,notifications,address,news,welcomeMessage,inviteMessage')
+
+    upload = groups.map(&method(:csv_for_swc))
+    upload.unshift(['o_group_id', '*_name', '*_description', '*_category_id', '*_owner_user_id', 'o_access_level', 'o_address', 'o_invite_message', 'o_welcome_message',
+                    'o_news', 'o_content_forums', 'o_content_events', 'o_content_photos', 'o_content_videos', 'o_content_files', 'o_content_members',
+                    'o_content_messages', 'o_photo_location'])
+    # File.open(group_import_file_location, 'w') { |f| f.puts(upload.to_json) }
+    CSV.open(group_import_file_location, 'w') { |csv| upload.each { |row| csv << row } }
+  end
+
+  def json_for_swc(g)
+    { 'o_group_id': g['id'], '*_name': CGI.unescape(g['name'].to_s), '*_description': CGI.unescape(g['description'].to_s),
+      '*_category_id': g['categoryId'], '*_owner_user_id': g['ownerId'].to_s, 'o_access_level': g['status'],
+      'o_address': json_group_address(g), 'o_invite_message': g['inviteMessage'].present? ? CGI.unescape(g['inviteMessage'].to_s) : nil,
+      'o_welcome_message': g.dig('welcomeMessage', 'message').present? ? CGI.unescape(g.dig('welcomeMessage', 'message')) : nil,
+      'o_news': g['news'].present? ? CGI.unescape(g['news'].to_s) : nil,
+      'o_content_forums': '2', 'o_content_events': '1', 'o_content_photos': '1',
+      'o_content_videos': '1', 'o_content_files': '1', 'o_content_members': '1', 'o_content_messages': '2',
+      'o_photo_location': g.dig('photo', 'fileLocation') }
+  end
+
+  def csv_for_swc(g)
+    [g['id'], CGI.unescape(g['name'].to_s), CGI.unescape(g['description'].to_s), g['categoryId'], g['ownerId'].to_s, g['status'],
+     json_group_address(g), g['inviteMessage'].present? ? CGI.unescape(g['inviteMessage'].to_s) : nil,
+     g.dig('welcomeMessage', 'message').present? ? CGI.unescape(g.dig('welcomeMessage', 'message')) : nil,
+     g['news'].present? ? CGI.unescape(g['news'].to_s) : nil,
+     '2', '1', '1', '1', '1', '1', '2', g.dig('photo', 'fileLocation')]
+  end
+
+  def json_group_address(g)
+    return nil unless g&.dig('address')
+
+    address = g.dig('address')
+    [address.dig('line1'), address.dig('line2'), address.dig('city'), address.dig('state'), address.dig('zip'), address.dig('country')].map(&:to_s).join(',')
+  end
 end
