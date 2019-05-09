@@ -189,7 +189,7 @@ class EndorserSync
 
   def sync_endorsers_to_wordpress
     return unless valid_data_columns?
-
+    
     current_endorsers = get_ready_for_web_data.select(&method(:include_row_in_wp?)).map(&method(:endorser_row))
     clear_wp_endorsers
 
@@ -239,7 +239,7 @@ class EndorserSync
     comments = row[21]
     linked_resource = row[32]
     # submitted_at = row[0]
-    featured_endorser = row[30].to_s.present? ? 1 : 0;
+    featured_endorser = row[30].to_s.casecmp('Featured').zero? ? 1 : 0;
 
     [first_name, last_name, title, org_name, website_url, city, state, zip, org_type, featured_endorser, org, linked_resource]
   end
