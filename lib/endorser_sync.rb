@@ -168,6 +168,7 @@ class EndorserSync
     end_changed = set_if_different(sf_row, :Org_Ind_Name__c, name) || end_changed
     end_changed = set_if_different(sf_row, :Contact_Title__c, contact_title) || end_changed
     end_changed = set_if_different(sf_row, :Contact_Name__c, contact_name) || end_changed
+    end_changed = set_if_different(sf_row, :Endorsement_Campaign__c, row[23].to_s) || end_changed
 
     if end_changed
       LOG.info("SF Endorsement #{sf_row.Id} Changed: #{sf_row}")
@@ -313,7 +314,7 @@ class EndorserSync
         Comments__c, Address__c, Contact_Email__c, Contact_Name__c, Contact_Phone__c, Contact_Title__c, EndorsementOrg__r.Website__c,
         EndorsementOrg__r.Mailing_Zip_Postal_Code__c, EndorsementOrg__r.Mailing_City__c, EndorsementOrg__r.Primary_Contact_Name__c,
         EndorsementOrg__r.Approval_Status__c, EndorsementOrg__r.Id, EndorsementOrg__r.Mailing_Street__c,
-        EndorsementOrg__r.Endorser_Type__c, EndorsementOrg__r.Name__c, Verification_Status__c
+        EndorsementOrg__r.Endorser_Type__c, EndorsementOrg__r.Name__c, Verification_Status__c, Endorsement_Campaign__c
       FROM Endorsement__c
       WHERE Endorsement_Type__c INCLUDES ('Energy Innovation and Carbon Dividend Act') AND Private_From_Endorser__c = 'Public'
         AND Country__c = 'United States' AND Endorsement_Status__c = 'Signed'
