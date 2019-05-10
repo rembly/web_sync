@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'google/apis/sheets_v4'
 require 'googleauth'
 require 'json'
@@ -15,28 +17,32 @@ class EndorserSync
   ENDORSER_JSON = File.join(File.dirname(__FILE__), '..', 'data', 'endorsers.json')
   ENDORSER_SHEET_ID = ENV['GOOGLE_ENDORSER_SHEET_ID']
   # ENDORSER_SHEET_ID = ENV['GOOGLE_ENDORSER_SHEET_COPY_ID']
-  # Ready for Web
-  READY_FOR_WEB_DATA_RANGE = 'Ready for Web!A2:AH'.freeze
-  READY_FOR_WEB_HEADING_RANGE = 'Ready for Web!A1:AH1'.freeze
-  READY_FOR_WEB_UPDATE_RANGE = "'Ready for Web'!AH%i:AH%i".freeze
-  READY_FOR_WEB_COLUMN_HEADINGS = ['Submitted Date','Completion Time','Completion Status',"I'm Endorsing As...",'First Name ','Last Name','Title','Email',
-     'Phone','Organization Name','Organization Name','Website URL','Address Line 1','Address Line 1','Address Line 2','City','State',
-     'Postal Code','Organization Type','# of U.S. employees','Population','Comments (not required)','Please confirm','Response Url','Referrer',
-     'Ip Address','Unprotected File List','Reviewer','Status','Notes','Featured Endorser', 'Final Staff Check', 'Link to Resource', 'Added to GET']
-  
+  # Ready for Web ** Update on Column Range
+  READY_FOR_WEB_DATA_RANGE = 'Ready for Web!A2:AI'
+  READY_FOR_WEB_HEADING_RANGE = 'Ready for Web!A1:AI1'
+  READY_FOR_WEB_UPDATE_RANGE = "'Ready for Web'!AI%i:AI%i"
+  READY_FOR_WEB_COLUMN_HEADINGS = ['Submitted Date', 'Completion Time', 'Completion Status', "I'm Endorsing As...", 'First Name ', 'Last Name', 'Title', 'Email',
+                                   'Phone', 'Organization Name', 'Organization Name', 'Website URL', 'Address Line 1', 'Address Line 1', 'Address Line 2', 'City', 'State',
+                                   'Postal Code', 'Organization Type', '# of U.S. employees', 'Population', 'Comments (not required)', 'Please confirm', 'Campaign', 'Response Url', 'Referrer',
+                                   'Ip Address', 'Unprotected File List', 'Reviewer', 'Status', 'Notes', 'Featured Endorser', 'Final Staff Check', 'Link to Resource', 'Added to GET'].freeze
+
   # Revision Tab - The ranges are templated to work with all revision tabs
-  REVISION_DATA_RANGE = 'Revision: %i!A2:AE'.freeze
-  REVISION_HEADING_RANGE = 'Revision: %i!A1:AE1'.freeze
-  REVISION_UPDATE_RANGE = "'Revision: %i'!AE%i:AE%i".freeze
+  REVISION_DATA_RANGE = 'Revision: %i!A2:AF'
+  REVISION_HEADING_RANGE = 'Revision: %i!A1:AF1'
+  REVISION_UPDATE_RANGE = "'Revision: %i'!AF%i:AF%i"
   REVISION_COLUMN_HEADINGS = ['Submitted Date', 'Completion Time', 'Completion Status', "I'm Endorsing As...", 'First Name ', 'Last Name', 'Job Title',
-    'Email', 'Phone', 'Organization Name', 'Organization Name', 'Website URL', 'Address Line 1', 'Address Line 1', 'Address Line 2',
-    'City', 'State', 'Postal Code', 'Organization Type', '# of U.S. employees', 'Population', 'Comments (not required)',
-    'Please confirm', 'Response Url', 'Referrer', 'Ip Address', 'Unprotected File List', 'Reviewer', 'Status', 'Notes', 'Added to GET']
+                              'Email', 'Phone', 'Organization Name', 'Organization Name', 'Website URL', 'Address Line 1', 'Address Line 1', 'Address Line 2',
+                              'City', 'State', 'Postal Code', 'Organization Type', '# of U.S. employees', 'Population', 'Comments (not required)',
+                              'Please confirm', 'Campaign', 'Response Url', 'Referrer', 'Ip Address', 'Unprotected File List', 'Reviewer', 'Status', 'Notes', 'Added to GET'].freeze
 
   WP_ENDORSER_TABLE = 'bill_endorsers'
-  FINAL_STAFF_CHECK = 31
-  RESPONSE_URL = 23
-  STATUS_COL = 28
+  FINAL_STAFF_CHECK = 32
+  READY_FOR_WEB_SF_COLUMN = 34
+  REVISION_SF_COLUMN = 31
+  RESPONSE_URL = 24
+  STATUS_COL = 29
+  LINKED_RESOURCE_COL = 33
+  FEATURED_ENDORSER_COL = 31
 
   attr_accessor :google_client
   attr_accessor :token
@@ -57,39 +63,39 @@ class EndorserSync
 
     # get rows that can be tied to GET
     web_endorsers = get_ready_for_web_data
-    
+
     sf_endorsers = get_linked_sf_endorsers
     by_fa_id = sf_endorsers.index_by(&:Form_Assembly_Reference_Id__c)
 
     # keep track of ready_for_web updates.. we don't update revision rows if they've been moved to ready for web
     updated_fa_ids = []
     sheet_updates = []
-    
+
     web_endorsers.each_with_index do |endorser, i|
       fa_id = endorser[RESPONSE_URL].to_s.split('/')&.last
       updated_fa_ids << fa_id
-      
-      if(include_ready_for_web_in_get?(endorser) && by_fa_id.has_key?(fa_id))
-        sf_row = by_fa_id[fa_id]
-        updated = update_get(endorser, sf_row)
-        in_progress = !completed_status?(endorser)
-        sheet_updates << {range: READY_FOR_WEB_UPDATE_RANGE % [i + 2, i + 2], values: [[in_progress ? 'in progress' : sf_row.Id.to_s]]}
-      end
+
+      next unless include_ready_for_web_in_get?(endorser) && by_fa_id.key?(fa_id)
+
+      sf_row = by_fa_id[fa_id]
+      updated = update_get(endorser, sf_row)
+      in_progress = !completed_status?(endorser)
+      sheet_updates << { range: format(READY_FOR_WEB_UPDATE_RANGE, i + 2, i + 2), values: [[in_progress ? 'in progress' : sf_row.Id.to_s]] }
     end
-    
+
     get_revision_sheet_numbers.each do |revision_number|
       version_endorsers = get_revision_data(revision_number)
       version_endorsers.each_with_index do |endorser, i|
         fa_id = endorser[RESPONSE_URL].to_s.split('/')&.last
 
-        if(include_revision_row_in_get?(endorser) && by_fa_id.has_key?(fa_id))
-          if(updated_fa_ids.exclude?(fa_id))
+        if include_revision_row_in_get?(endorser) && by_fa_id.key?(fa_id)
+          if updated_fa_ids.exclude?(fa_id)
             sf_row = by_fa_id[fa_id]
             updated = update_get(endorser, sf_row)
             in_progress = !completed_status?(endorser)
-            sheet_updates << {range: REVISION_UPDATE_RANGE % [revision_number, i + 2, i + 2], values: [[in_progress ? 'in progress' : sf_row.Id.to_s]]}
+            sheet_updates << { range: format(REVISION_UPDATE_RANGE, revision_number, i + 2, i + 2), values: [[in_progress ? 'in progress' : sf_row.Id.to_s]] }
           else
-            sheet_updates << {range: REVISION_UPDATE_RANGE % [revision_number, i + 2, i + 2], values: [['Ready for Web']]}
+            sheet_updates << { range: format(REVISION_UPDATE_RANGE, revision_number, i + 2, i + 2), values: [['Ready for Web']] }
           end
         end
       end
@@ -109,18 +115,19 @@ class EndorserSync
     final_staff_check = row[FINAL_STAFF_CHECK].to_s.strip.casecmp('x').zero?
     # handle municipal????
     return unless ['A prominent individual', 'An organization'].include?(type)
-    is_org = (type =='An organization')
+
+    is_org = (type == 'An organization')
 
     street = [row[12].to_s.strip + row[13].to_s.strip, row[14].to_s.strip].map(&:strip).reject(&:empty?).join(', ')
     contact_name = "#{row[4].to_s.strip} #{row[5].to_s.strip}"
     name = is_org ? row[9].to_s.strip : contact_name
-    status = row[28]
+    status = row[STATUS_COL]
     sf_org_status = status == 'Verified' ? 'Approved' : sf_row.EndorsementOrg__r.Approval_Status__c
     sf_end_status = final_staff_check ? 'Posted to Web' : %w[Declined Verified].include?(status) ? status : 'Pending'
 
-    org_map = {Mailing_City__c: 15, Email__c: 7, Primary_Contact_Title__c: 6, Phone__c: 8, Mailing_Zip_Postal_Code__c: 17}
+    org_map = { Mailing_City__c: 15, Email__c: 7, Primary_Contact_Title__c: 6, Phone__c: 8, Mailing_Zip_Postal_Code__c: 17 }
     end_type = is_org ? 'Organizational' : 'Individual'
-    end_map = {City__c: 15, Zip_Postal_Code__c: 17, Contact_Email__c: 7, Contact_Phone__c: 8, Comments__c: 21}
+    end_map = { City__c: 15, Zip_Postal_Code__c: 17, Contact_Email__c: 7, Contact_Phone__c: 8, Comments__c: 21 }
 
     # only update if a field changed
     sf_org = sf_row.EndorsementOrg__r
@@ -138,7 +145,7 @@ class EndorserSync
     org_changed = set_if_different(sf_org, :Website__c, 'http://' + row[11]) || org_changed
     org_changed = set_if_different(sf_org, :Population__c, row[20].to_i.to_f) || org_changed if row[20].present?
     org_changed = set_if_different(sf_org, :Employees__c, row[19].to_i.to_f) || org_changed if row[19].present?
-    
+
     if org_changed
       LOG.info("SF Endorser Org #{sf_org.Id} Changed: #{sf_org}")
       did_save = sf_org.save!
@@ -147,7 +154,7 @@ class EndorserSync
         send_email("Failed to save: #{sf_org}")
       end
     end
-    
+
     # update endorsement
     end_changed = false
     end_map.each do |sf_field, row_index|
@@ -170,16 +177,16 @@ class EndorserSync
         send_email("Failed to save: #{sf_row}")
       end
     end
-    
+
     end_changed || org_changed
   end
-  
+
   # this will determine if a field is different between the SF and Sheet records
   # returns true if a field was updated
   def set_if_different(sf_row, field, sheet_val)
     sf_val = sf_row.send(field)
     sheet_val = sheet_val.to_s.strip
-    if(sf_val.to_s != sheet_val)
+    if sf_val.to_s != sheet_val
       LOG.info("ID: #{sf_row.Id} - SF Field #{field} updated from #{sf_val} to #{sheet_val} for #{sf_row}")
       sf_row.send(field.to_s + '=', sheet_val)
       return true
@@ -189,7 +196,7 @@ class EndorserSync
 
   def sync_endorsers_to_wordpress
     return unless valid_data_columns?
-    
+
     current_endorsers = get_ready_for_web_data.select(&method(:include_row_in_wp?)).map(&method(:endorser_row))
     clear_wp_endorsers
 
@@ -198,7 +205,7 @@ class EndorserSync
         INSERT INTO #{WP_ENDORSER_TABLE}(first_name, last_name, title, organization_name,
             website_url, city, state, postal_code, organization_type, featured_endorser, individual_organization, link_to_resource)
         VALUES
-            #{current_endorsers.map{|endorser_row| '("' + endorser_row.join('","') + '")'}.join(',')}
+            #{current_endorsers.map { |endorser_row| '("' + endorser_row.join('","') + '")' }.join(',')}
       INSERT
 
       LOG.info("Synchronized #{current_endorsers.size} endorsers to Wordpress")
@@ -210,17 +217,16 @@ class EndorserSync
     end
   end
 
-
   def include_row_in_wp?(row)
     row[FINAL_STAFF_CHECK].to_s.strip.casecmp('x').zero?
   end
 
   def include_ready_for_web_in_get?(row)
-    row[33].to_s.strip.length != 18 || !completed_status?(row)
+    row[READY_FOR_WEB_SF_COLUMN].to_s.strip.length != 18 || !completed_status?(row)
   end
 
   def include_revision_row_in_get?(row)
-    row[30].to_s.strip.length != 18 || !completed_status?(row)
+    row[REVISION_SF_COLUMN].to_s.strip.length != 18 || !completed_status?(row)
   end
 
   def completed_status?(endorser)
@@ -231,15 +237,19 @@ class EndorserSync
     is_org = row[3] == 'An organization'
     endorsing_as = row[3]
     org_type = row[18]
-    first_name, last_name, title = row[4], row[5], row[6]
+    first_name = row[4]
+    last_name = row[5]
+    title = row[6]
     org = row[9].present? ? row[9] : row[10]
-    org_name = is_org ? org : '';
+    org_name = is_org ? org : ''
     website_url = row[11]
-    city, state, zip = row[15], row[16], row[17]
+    city = row[15]
+    state = row[16]
+    zip = row[17]
     comments = row[21]
-    linked_resource = row[32]
+    linked_resource = row[LINKED_RESOURCE_COL]
     # submitted_at = row[0]
-    featured_endorser = row[30].to_s.casecmp('Featured').zero? ? 1 : 0;
+    featured_endorser = row[FEATURED_ENDORSER_COL].to_s.casecmp('Featured').zero? ? 1 : 0
 
     [first_name, last_name, title, org_name, website_url, city, state, zip, org_type, featured_endorser, org, linked_resource]
   end
@@ -258,7 +268,7 @@ class EndorserSync
 
   # column headings must match and be in the same order to ensure sync works correctly
   def valid_data_columns?
-    revision_missmatch = get_revision_sheet_numbers.any?{|number| column_headings_revision(number) != REVISION_COLUMN_HEADINGS }
+    revision_missmatch = get_revision_sheet_numbers.any? { |number| column_headings_revision(number) != REVISION_COLUMN_HEADINGS }
 
     if column_headings_ready_for_web != READY_FOR_WEB_COLUMN_HEADINGS || revision_missmatch
       message = 'Endorser spreadsheet columns have been re-arranged or modified. Unable to sync'
@@ -280,44 +290,44 @@ class EndorserSync
   def get_revision_sheet_numbers
     revision_regex = /Revision: (\d*)/
     @revision_sheet_numbers ||= google_client.get_spreadsheet(ENDORSER_SHEET_ID).sheets.map(&:properties).map(&:title)
-                  .map{|t| t.match(revision_regex)&.captures&.first}.compact
+                                             .map { |t| t.match(revision_regex)&.captures&.first }.compact
     @revision_sheet_numbers
   end
 
   def get_sf_endorsers_json
-   endorsers = get_sf_endorsers.to_a.map do |endorser|
-      {name: endorser.Org_Ind_Name__c, type: endorser.Endorser_Type__c, state: endorser.State_Province__r&.Abbreviation__c.to_s, 
-         zip: endorser.Zip_Postal_Code__c, district: endorser.EndorsementOrg__r&.Congressional_District__r&.Name.to_s}
-   end
+    endorsers = get_sf_endorsers.to_a.map do |endorser|
+      { name: endorser.Org_Ind_Name__c, type: endorser.Endorser_Type__c, state: endorser.State_Province__r&.Abbreviation__c.to_s,
+        zip: endorser.Zip_Postal_Code__c, district: endorser.EndorsementOrg__r&.Congressional_District__r&.Name.to_s }
+    end
 
-   File.open(ENDORSER_JSON, 'w'){|f| f.puts endorsers.to_json}
+    File.open(ENDORSER_JSON, 'w') { |f| f.puts endorsers.to_json }
   end
 
   # NOTE: right now I'm only grabbing linked endorsements (ones that have Form_Assembly_Reference_Id__c)
   def get_linked_sf_endorsers
     supporters = sf.client.query(<<-QUERY)
-      SELECT Id, Form_Assembly_Reference_Id__c, City__c, Date__c, Endorser_Type__c, Org_Ind_Name__c, State_Province__r.Name, 
+      SELECT Id, Form_Assembly_Reference_Id__c, City__c, Date__c, Endorser_Type__c, Org_Ind_Name__c, State_Province__r.Name,
         State_Province__r.Abbreviation__c, Zip_Postal_Code__c, EndorsementOrg__r.Congressional_District__c,
         EndorsementOrg__r.Congressional_District__r.Name, EndorsementOrg__r.Population__c, EndorsementOrg__r.Employees__c,
-        EndorsementOrg__r.Email__c, EndorsementOrg__r.Primary_Contact_Title__c, EndorsementOrg__r.Phone__c, 
+        EndorsementOrg__r.Email__c, EndorsementOrg__r.Primary_Contact_Title__c, EndorsementOrg__r.Phone__c,
         Comments__c, Address__c, Contact_Email__c, Contact_Name__c, Contact_Phone__c, Contact_Title__c, EndorsementOrg__r.Website__c,
         EndorsementOrg__r.Mailing_Zip_Postal_Code__c, EndorsementOrg__r.Mailing_City__c, EndorsementOrg__r.Primary_Contact_Name__c,
         EndorsementOrg__r.Approval_Status__c, EndorsementOrg__r.Id, EndorsementOrg__r.Mailing_Street__c,
         EndorsementOrg__r.Endorser_Type__c, EndorsementOrg__r.Name__c, Verification_Status__c
       FROM Endorsement__c
-      WHERE Endorsement_Type__c INCLUDES ('Energy Innovation and Carbon Dividend Act') AND Private_From_Endorser__c = 'Public' 
-        AND Country__c = 'United States' AND Endorsement_Status__c = 'Signed' 
-        AND (State_Province__r.Abbreviation__c <> null OR EndorsementOrg__r.Congressional_District__r.Name <> null) 
+      WHERE Endorsement_Type__c INCLUDES ('Energy Innovation and Carbon Dividend Act') AND Private_From_Endorser__c = 'Public'
+        AND Country__c = 'United States' AND Endorsement_Status__c = 'Signed'
+        AND (State_Province__r.Abbreviation__c <> null OR EndorsementOrg__r.Congressional_District__r.Name <> null)
         AND Form_Assembly_Reference_Id__c <> null
     QUERY
   end
 
   def get_sf_endorsers
     supporters = sf.client.query(<<-QUERY)
-      SELECT City__c, Date__c, EndorsementOrg__r.Name, Endorser_Type__c, Org_Ind_Name__c, State_Province__r.Name, State_Province__r.Abbreviation__c, 
+      SELECT City__c, Date__c, EndorsementOrg__r.Name, Endorser_Type__c, Org_Ind_Name__c, State_Province__r.Name, State_Province__r.Abbreviation__c,
          Zip_Postal_Code__c, EndorsementOrg__r.Congressional_District__c, EndorsementOrg__r.Congressional_District__r.Name
       FROM Endorsement__c
-      WHERE Endorsement_Type__c INCLUDES ('Energy Innovation and Carbon Dividend Act') AND Private_From_Endorser__c = 'Public'AND Country__c = 'United States' 
+      WHERE Endorsement_Type__c INCLUDES ('Energy Innovation and Carbon Dividend Act') AND Private_From_Endorser__c = 'Public'AND Country__c = 'United States'
          AND Endorsement_Status__c = 'Signed' AND (State_Province__r.Abbreviation__c <> null OR EndorsementOrg__r.Congressional_District__r.Name <> null)
     QUERY
   end
