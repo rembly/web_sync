@@ -12,6 +12,7 @@ class ThrottledApiClient
 
   attr_accessor :api_url
   attr_accessor :queue_consumer
+  attr_accessor :logger
   attr_reader :call_queue
   attr_reader :api_token
   attr_reader :time_between_calls
@@ -63,7 +64,7 @@ class ThrottledApiClient
   end
 
   # schedule call for later, taking API limit into account. Passes results of call to callback
-  def queue_delete(endpoint:, &callback)
+  def queue_delete(endpoint:)
     @call_queue << lambda {
       send_delete(endpoint: endpoint)
     }
@@ -75,6 +76,7 @@ class ThrottledApiClient
       sleep @time_between_calls
       RestClient.put(base_uri, data.to_json, content_type: :json, accept: :json, Authorization: "Bearer #{@api_token}")
     rescue RestClient::ExceptionWithResponse => e
+      @logger.info('Error call: endpoint: ' + endpoint + '. Data: ' + data.to_s.delete("\n").strip)
       return handle_response(e.response)
     end
   end
@@ -107,6 +109,7 @@ class ThrottledApiClient
   # return json representation of results or error object if call failed. This will handle client pagination
   def handle_response(response)
     return if response.blank?
+
     @last_response = response
     if success_response?(response)
       results = JSON.parse(response)
@@ -120,7 +123,7 @@ class ThrottledApiClient
 
   # gather pages if there is a next_page token and the result set contains participants
   def gather_pages?(response)
-    response.headers.key?(:link) && response.headers[:link].include?("rel=\"next")
+    response.headers.key?(:link) && response.headers[:link].include?('rel="next')
   end
 
   # get next page by re-sending same request but with next page token. This will block for max api call rate duration
@@ -128,7 +131,7 @@ class ThrottledApiClient
   def get_next_page(response)
     next_page_url = response.headers[:link].match(/^<([^>]*)>; rel=\"next/)
     request_uri = URI.parse(next_page_url.captures.first)
-    # TODO remove.. not generic
+    # TODO: remove.. not generic
     base_uri = '/services/4.0/'
     endpoint = [request_uri.path.split(base_uri).last, request_uri.query].join('?')
     sleep @time_between_calls
