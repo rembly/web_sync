@@ -240,19 +240,23 @@ class EndorserSync
     org_type = row[18]
     first_name = row[4]
     last_name = row[5]
-    title = row[6]
+    title = escape_sql(row[6])
     org = row[9].present? ? row[9] : row[10]
     org_name = is_org ? org : ''
     website_url = row[11]
     city = row[15]
     state = row[16]
     zip = row[17]
-    comments = row[21]
+    comments = escape_sql(row[21])
     linked_resource = row[LINKED_RESOURCE_COL]
     # submitted_at = row[0]
     featured_endorser = row[FEATURED_ENDORSER_COL].to_s.casecmp('Featured').zero? ? 1 : 0
 
-    [first_name, last_name, title, org_name, website_url, city, state, zip, org_type, featured_endorser, org, linked_resource]
+    [first_name, last_name, title, escape_sql(org_name), website_url, city, state, zip, org_type, featured_endorser, org, linked_resource]
+  end
+
+  def escape_sql(str)
+    str.to_s.gsub('"', "'")
   end
 
   def clear_wp_endorsers
