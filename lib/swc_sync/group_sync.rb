@@ -40,8 +40,8 @@ class GroupSync
       swc_zip = group['address']['zip'].to_s.strip
       zip = postal_codes[swc_zip]
 
-      if zip.blank?
-        message = "No SF postal code for #{swc_zip}, Group #{group['name']}, ID: #{group['id']}"
+      if zip.blank? || sf_group.nil?
+        message = "No SF #{zip.blank? ? 'postal code' : 'SF group'} for #{swc_zip}, Group #{group['name']}, ID: #{group['id']}"
         LOG.info(message)
         missing_postal_codes << message
         next
