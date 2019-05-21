@@ -23,38 +23,79 @@ class GroupSync
   end
 
   def update_address
+    LOG.info('**** Syncing Addresses between SWC and Salesforce ****')
     postal_codes = get_sf_postal_codes.index_by(&:Name)
     sf_groups = get_sf_chapters.index_by { |group| group.SWC_Group_ID__c.to_i.to_s }
     swc_chapters = get_swc_chapters
 
-    # should I write the zip back to SWC if SWC is blank?
-    groups_with_zip = swc_chapters.select do |g|
-      # only for US postal codes
-      g.dig('address').present? && g.dig('address').dig('zip').present? && g.dig('address').dig('country') == 'USA'
-    end
-
     missing_postal_codes = []
-
-    groups_with_zip.each do |group|
+    
+    swc_chapters.each do |group|
       sf_group = sf_groups[group['id']]
-      swc_zip = group['address']['zip'].to_s.strip
+      swc_address = group.dig('address') || {}
+      swc_zip = swc_address.dig('zip').to_s.strip
       zip = postal_codes[swc_zip]
 
-      if zip.blank? || sf_group.nil?
-        message = "No SF #{zip.blank? ? 'postal code' : 'SF group'} for #{swc_zip}, Group #{group['name']}, ID: #{group['id']}"
+      if sf_group.nil?
+        message = "No SF group for SWC Group #{group['name']}, ID: #{group['id']}"
         LOG.info(message)
         missing_postal_codes << message
         next
       end
 
-      next unless zip.present? && (sf_group&.Postal_Code_Data__r&.Name.to_s != swc_zip)
+      update_salesforce_address_from_swc(group, sf_group, zip, missing_postal_codes)
+      update_swc_address_from_sf(group, sf_group)
+    end
+    
+    send_missing_zips(missing_postal_codes) if missing_postal_codes.any?
+  end
 
-      LOG.info("Group #{sf_group&.Name} (#{sf_group&.Id}) zip #{sf_group&.Postal_Code_Data__r&.Name} <> #{swc_zip} for #{group['name']} - #{group['id']}. Zip to set: #{zip.Id}")
-      sf_group.Postal_Code_Data__c = zip.Id
-      sf_group.save
+  def update_swc_address_from_sf(swc_group, sf_group)
+    swc_address = swc_group.dig('address') || {}
+    swc_zip = swc_address.dig('zip').to_s.strip
+    sf_po = sf_group.Postal_Code_Data__r&.Name
+
+    do_save = false
+
+    {'city': 'City__c', 'state': 'State__c', 'country': 'Country__c'}.each do |(sw_field, sf_field)|
+      if swc_address.dig(sw_field.to_s).blank? && sf_group.send(sf_field).present?
+        swc_address[sw_field] = sf_group.send(sf_field)
+        do_save = true
+      end
     end
 
-    send_missing_zips(missing_postal_codes) if missing_postal_codes.any?
+    if swc_zip.blank? && sf_po.present?
+      swc_address['zip'] = sf_po
+      do_save = true
+    end
+    
+    if do_save
+      update = {id: swc_group['id'], name: swc_group['name'], description: swc_group['description'], categoryId: swc_group['categoryId'],
+                address: swc_address}
+      response = api.put(endpoint: "groups/#{swc_group['id']}", data: update)
+      LOG.info("Updating SWC Group #{swc_group['id']}: response: #{response.to_s.delete("\n").strip}")
+      # LOG.info("Updating SWC Group #{swc_group['id']}. data: #{update}")
+    end
+
+  end
+  
+  # update the Salesforce postal code if it's been updated in SWC
+  def update_salesforce_address_from_swc(swc_group, sf_group, zip, missing_postal_codes)
+    swc_address = swc_group.dig('address') || {}
+    swc_zip = swc_address.dig('zip').to_s.strip
+
+    if zip.blank?
+      message = "No SF postal code for #{swc_zip}, Group #{swc_group['name']}, ID: #{swc_group['id']}"
+      LOG.info(message)
+      missing_postal_codes << message
+      return
+    end
+
+    return unless zip.present? && (sf_group&.Postal_Code_Data__r&.Name.to_s != swc_zip)
+
+    LOG.info("Group #{sf_group&.Name} (#{sf_group&.Id}) zip #{sf_group&.Postal_Code_Data__r&.Name} <> #{swc_zip} for #{swc_group['name']} - #{swc_group['id']}. Zip to set: #{zip.Id}")
+    sf_group.Postal_Code_Data__c = zip.Id
+    sf_group.save
   end
 
   def get_swc_chapters
@@ -63,7 +104,7 @@ class GroupSync
 
   def get_sf_chapters
     @sf_contacts = sf.client.query(<<-QUERY)
-      SELECT Id, Name, SWC_Group_ID__c, Postal_Code_Data__c, Postal_Code_Data__r.Name
+      SELECT Id, Name, SWC_Group_ID__c, Postal_Code_Data__c, Postal_Code_Data__r.Name, City__c, State__c, Country__c
       FROM Group__c
       WHERE SWC_Group_ID__c <> 0 AND SWC_Group_ID__c <> null AND Country__c = 'USA'
     QUERY
