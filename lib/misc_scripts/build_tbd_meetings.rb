@@ -45,8 +45,8 @@ def get_tbd_rows(missing, missing_accounts, confirmed)
     setter = confirmed_grouped[dist_name]&.first
     p dist
     setter = setter || {}
-    [dist_name, 'True', '6/11/2019 7:00 AM', 'Staff', dist&.Office_Building__c, dist&.Office_Number__c, 
-      setter['Appt Setter: Id'], setter['Appointment Setter: Email']]
+    [dist_name, dist&.Id, 'True', '6/11/2019 9:00 AM', 'Staff', dist&.Office_Building__c, dist&.Office_Number__c, 
+      setter['Appt Setter: Id'], setter['Appointment Setter: Email'], 'a080V00001nNve4', 'TBD Created when no meeting scheduled by May 31st']
     end
   end
   
