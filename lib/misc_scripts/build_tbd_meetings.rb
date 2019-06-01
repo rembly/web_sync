@@ -4,7 +4,7 @@ require 'csv'
 
 def get_confirmed
   # https://na51.salesforce.com/00O0V000005YQhM
-  confirmed = CSV.readlines(File.join(File.dirname(__FILE__), '..', '..', 'data', 'appoint_setter_confirmed.csv'), headers: true)
+  confirmed = CSV.readlines(File.join(File.dirname(__FILE__), '..', '..', 'data', 'appointment_setter_confirmed.csv'), headers: true)
   confirmed.map(&:to_hash)
 end
 
@@ -41,12 +41,13 @@ def get_tbd_rows(missing, missing_accounts, confirmed)
   
   rows = missing.map do |m|
     dist_name = m['Account/Organization Name: CCL Congressional District: Account/Organization Name']
+    moc = m['Contact ID']
     dist = missing_grouped[dist_name]&.first
     setter = confirmed_grouped[dist_name]&.first
     p dist
     setter = setter || {}
-    [dist_name, dist&.Id, 'True', '6/11/2019 9:00 AM', 'Staff', dist&.Office_Building__c, dist&.Office_Number__c, 
-      setter['Appt Setter: Id'], setter['Appointment Setter: Email'], 'a080V00001nNve4', 'TBD Created when no meeting scheduled by May 31st']
+    [dist_name, dist&.Id, 'True', '6/11/2019 9:00 AM', 'Staff', dist&.Office_Building__c, dist&.Office_Number__c, moc,
+      setter['Appt Setter: ID'], setter['Appointment Setter: Email'], 'a080V00001nNve4', 'TBD Created when no meeting scheduled by May 31st']
     end
   end
   
