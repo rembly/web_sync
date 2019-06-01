@@ -36,6 +36,9 @@ class GroupSync
       swc_zip = swc_address.dig('zip').to_s.strip
       zip = postal_codes[swc_zip]
 
+      not_usa = swc_address.dig('country').present? && swc_address.dig('country') != 'USA'
+      next if not_usa
+
       if sf_group.nil?
         message = "No SF group for SWC Group #{group['name']}, ID: #{group['id']}"
         LOG.info(message)
