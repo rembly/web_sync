@@ -122,8 +122,7 @@ class EndorserSync
     contact_name = "#{row[4].to_s.strip} #{row[5].to_s.strip}"
     name = is_org ? row[9].to_s.strip : contact_name
     status = row[STATUS_COL]
-    sf_org_status = status == 'Verified' ? 'Approved' : sf_row.EndorsementOrg__r.Approval_Status__c
-    sf_end_status = final_staff_check ? 'Posted to Web' : %w[Declined Verified].include?(status) ? status : 'Pending'
+    # sf_end_status = final_staff_check ? 'Posted to Web' : %w[Declined Verified].include?(status) ? status : 'Pending'
 
     org_map = { Mailing_City__c: 15, Email__c: 7, Primary_Contact_Title__c: 6, Phone__c: 8, Mailing_Zip_Postal_Code__c: 17 }
     end_type = is_org ? 'Organizational' : 'Individual'
@@ -137,7 +136,6 @@ class EndorserSync
       org_changed = set_if_different(sf_org, sf_field, sheet_val.to_s.strip) || org_changed
     end
     # non-auto fields
-    org_changed = set_if_different(sf_org, :Approval_Status__c, sf_org_status) || org_changed
     org_changed = set_if_different(sf_org, :Endorser_Type__c, end_type) || org_changed
     org_changed = set_if_different(sf_org, :Name__c, name) || org_changed
     org_changed = set_if_different(sf_org, :Mailing_Street__c, street) || org_changed
@@ -163,7 +161,7 @@ class EndorserSync
     end
     contact_title = [row[6].to_s, row[10].to_s].map(&:strip).reject(&:empty?).join(', ')
     end_changed = set_if_different(sf_row, :Endorser_Type__c, end_type) || end_changed
-    end_changed = set_if_different(sf_row, :Verification_Status__c, sf_end_status) || end_changed
+    # end_changed = set_if_different(sf_row, :Verification_Status__c, sf_end_status) || end_changed
     end_changed = set_if_different(sf_row, :Address__c, street) || end_changed
     end_changed = set_if_different(sf_row, :Org_Ind_Name__c, name) || end_changed
     end_changed = set_if_different(sf_row, :Contact_Title__c, contact_title) || end_changed
