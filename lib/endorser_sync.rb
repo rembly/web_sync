@@ -123,11 +123,12 @@ class EndorserSync
     name = is_org ? row[9].to_s.strip : contact_name
     status = row[STATUS_COL]
     # sf_end_status = final_staff_check ? 'Posted to Web' : %w[Declined Verified].include?(status) ? status : 'Pending'
-
-    org_map = { Mailing_City__c: 15, Email__c: 7, Primary_Contact_Title__c: 6, Phone__c: 8, Mailing_Zip_Postal_Code__c: 17 }
+    
+    org_map = { Mailing_City__c: 15, Email__c: 7, Primary_Contact_Title__c: 6, Phone__c: 8, 
+      Mailing_Zip_Postal_Code__c: 17, Endorsement_Campaign__c: 23 }
     end_type = is_org ? 'Organizational' : 'Individual'
-    end_map = { City__c: 15, Zip_Postal_Code__c: 17, Contact_Email__c: 7, Contact_Phone__c: 8, Comments__c: 21 }
-
+    end_map = { City__c: 15, Zip_Postal_Code__c: 17, Contact_Email__c: 7, Contact_Phone__c: 8, Comments__c: 21, Endorsement_Campaign__c: 23 }
+    
     # only update if a field changed
     sf_org = sf_row.EndorsementOrg__r
     org_changed = false
@@ -143,7 +144,7 @@ class EndorserSync
     org_changed = set_if_different(sf_org, :Website__c, 'http://' + row[11]) || org_changed
     org_changed = set_if_different(sf_org, :Population__c, row[20].to_i.to_f) || org_changed if row[20].present?
     org_changed = set_if_different(sf_org, :Employees__c, row[19].to_i.to_f) || org_changed if row[19].present?
-
+    
     if org_changed
       LOG.info("SF Endorser Org #{sf_org.Id} Changed: #{sf_org}")
       did_save = sf_org.save!
@@ -152,7 +153,7 @@ class EndorserSync
         send_email("Failed to save: #{sf_org}")
       end
     end
-
+    
     # update endorsement
     end_changed = false
     end_map.each do |sf_field, row_index|
@@ -166,8 +167,7 @@ class EndorserSync
     end_changed = set_if_different(sf_row, :Org_Ind_Name__c, name) || end_changed
     end_changed = set_if_different(sf_row, :Contact_Title__c, contact_title) || end_changed
     end_changed = set_if_different(sf_row, :Contact_Name__c, contact_name) || end_changed
-    end_changed = set_if_different(sf_row, :Endorsement_Campaign__c, row[23].to_s) || end_changed
-
+    
     if end_changed
       LOG.info("SF Endorsement #{sf_row.Id} Changed: #{sf_row}")
       did_save = sf_row.save!
@@ -179,7 +179,7 @@ class EndorserSync
 
     end_changed || org_changed
   end
-
+  
   # this will determine if a field is different between the SF and Sheet records
   # returns true if a field was updated
   def set_if_different(sf_row, field, sheet_val)
@@ -192,21 +192,22 @@ class EndorserSync
     end
     false
   end
-
+  
   def sync_endorsers_to_wordpress
     return unless valid_data_columns?
-
+    
     current_endorsers = get_ready_for_web_data.select(&method(:include_row_in_wp?)).map(&method(:endorser_row))
+    # binding.pry if last_name == 'Chaplin'
     clear_wp_endorsers
-
+    
     begin
       wp_client.query(<<-INSERT)
-        INSERT INTO #{WP_ENDORSER_TABLE}(first_name, last_name, title, organization_name,
-            website_url, city, state, postal_code, organization_type, featured_endorser, individual_organization, link_to_resource)
-        VALUES
-            #{current_endorsers.map { |endorser_row| '("' + endorser_row.join('","') + '")' }.join(',')}
+      INSERT INTO #{WP_ENDORSER_TABLE}(first_name, last_name, title, organization_name,
+      website_url, city, state, postal_code, organization_type, featured_endorser, individual_organization, link_to_resource)
+      VALUES
+      #{current_endorsers.map { |endorser_row| '("' + endorser_row.join('","') + '")' }.join(',')}
       INSERT
-
+      
       LOG.info("Synchronized #{current_endorsers.size} endorsers to Wordpress")
     rescue Mysql2::Error => e
       message = "Unable to synchronize endorsers to Wordpress: #{e.message}"
@@ -249,7 +250,8 @@ class EndorserSync
     linked_resource = row[LINKED_RESOURCE_COL]
     # submitted_at = row[0]
     featured_endorser = row[FEATURED_ENDORSER_COL].to_s.casecmp('Featured').zero? ? 1 : 0
-
+    
+    # binding.pry if last_name == 'Chaplin'
     [first_name, last_name, title, escape_sql(org_name), website_url, city, state, zip, org_type, featured_endorser, org, linked_resource]
   end
 
@@ -316,7 +318,8 @@ class EndorserSync
         Comments__c, Address__c, Contact_Email__c, Contact_Name__c, Contact_Phone__c, Contact_Title__c, EndorsementOrg__r.Website__c,
         EndorsementOrg__r.Mailing_Zip_Postal_Code__c, EndorsementOrg__r.Mailing_City__c, EndorsementOrg__r.Primary_Contact_Name__c,
         EndorsementOrg__r.Approval_Status__c, EndorsementOrg__r.Id, EndorsementOrg__r.Mailing_Street__c,
-        EndorsementOrg__r.Endorser_Type__c, EndorsementOrg__r.Name__c, Verification_Status__c, Endorsement_Campaign__c
+        EndorsementOrg__r.Endorser_Type__c, EndorsementOrg__r.Name__c, Verification_Status__c, Endorsement_Campaign__c,
+        EndorsementOrg__r.Endorsement_Campaign__c
       FROM Endorsement__c
       WHERE Endorsement_Type__c INCLUDES ('Energy Innovation and Carbon Dividend Act') AND Private_From_Endorser__c = 'Public'
         AND Country__c = 'United States' AND Endorsement_Status__c = 'Signed'
@@ -327,7 +330,7 @@ class EndorserSync
 
   def get_sf_endorsers
     supporters = sf.client.query(<<-QUERY)
-      SELECT City__c, Date__c, EndorsementOrg__r.Name, Endorser_Type__c, Org_Ind_Name__c, State_Province__r.Name, State_Province__r.Abbreviation__c,
+      SELECT EndorsementOrg__r.Name, Endorser_Type__c, Org_Ind_Name__c, State_Province__r.Name, State_Province__r.Abbreviation__c,
          Zip_Postal_Code__c, EndorsementOrg__r.Congressional_District__c, EndorsementOrg__r.Congressional_District__r.Name
       FROM Endorsement__c
       WHERE Endorsement_Type__c INCLUDES ('Energy Innovation and Carbon Dividend Act') AND Private_From_Endorser__c = 'Public'AND Country__c = 'United States'
