@@ -168,7 +168,7 @@ class EndorserSync
     end_changed = set_if_different(sf_row, :Org_Ind_Name__c, name) || end_changed
     end_changed = set_if_different(sf_row, :Contact_Title__c, contact_title) || end_changed
     end_changed = set_if_different(sf_row, :Contact_Name__c, contact_name) || end_changed
-    end_changed = set_if_different(sf_row, :Mailing_Zip_Postal_Code__c, postal_code) || end_changed
+    end_changed = set_if_different(sf_row, :Zip_Postal_Code__c, postal_code) || end_changed
     
     if end_changed
       LOG.info("SF Endorsement #{sf_row.Id} Changed: #{sf_row}")
