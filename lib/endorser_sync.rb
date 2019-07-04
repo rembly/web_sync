@@ -122,12 +122,12 @@ class EndorserSync
     contact_name = "#{row[4].to_s.strip} #{row[5].to_s.strip}"
     name = is_org ? row[9].to_s.strip : contact_name
     status = row[STATUS_COL]
+    postal_code = row[17].to_s.rjust(5, '0')
     # sf_end_status = final_staff_check ? 'Posted to Web' : %w[Declined Verified].include?(status) ? status : 'Pending'
     
-    org_map = { Mailing_City__c: 15, Email__c: 7, Primary_Contact_Title__c: 6, Phone__c: 8, 
-      Mailing_Zip_Postal_Code__c: 17, Endorsement_Campaign__c: 23 }
+    org_map = { Mailing_City__c: 15, Email__c: 7, Primary_Contact_Title__c: 6, Phone__c: 8, Endorsement_Campaign__c: 23 }
     end_type = is_org ? 'Organizational' : 'Individual'
-    end_map = { City__c: 15, Zip_Postal_Code__c: 17, Contact_Email__c: 7, Contact_Phone__c: 8, Comments__c: 21, Endorsement_Campaign__c: 23 }
+    end_map = { City__c: 15, Contact_Email__c: 7, Contact_Phone__c: 8, Comments__c: 21, Endorsement_Campaign__c: 23 }
     
     # only update if a field changed
     sf_org = sf_row.EndorsementOrg__r
@@ -144,6 +144,7 @@ class EndorserSync
     org_changed = set_if_different(sf_org, :Website__c, 'http://' + row[11]) || org_changed
     org_changed = set_if_different(sf_org, :Population__c, row[20].to_i.to_f) || org_changed if row[20].present?
     org_changed = set_if_different(sf_org, :Employees__c, row[19].to_i.to_f) || org_changed if row[19].present?
+    org_changed = set_if_different(sf_org, :Mailing_Zip_Postal_Code__c, postal_code) || org_changed
     
     if org_changed
       LOG.info("SF Endorser Org #{sf_org.Id} Changed: #{sf_org}")
@@ -167,6 +168,7 @@ class EndorserSync
     end_changed = set_if_different(sf_row, :Org_Ind_Name__c, name) || end_changed
     end_changed = set_if_different(sf_row, :Contact_Title__c, contact_title) || end_changed
     end_changed = set_if_different(sf_row, :Contact_Name__c, contact_name) || end_changed
+    end_changed = set_if_different(sf_row, :Mailing_Zip_Postal_Code__c, postal_code) || end_changed
     
     if end_changed
       LOG.info("SF Endorsement #{sf_row.Id} Changed: #{sf_row}")
