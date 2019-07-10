@@ -123,7 +123,7 @@ class EndorserSync
     name = is_org ? row[9].to_s.strip : contact_name
     status = row[STATUS_COL]
     postal_code = row[17].to_s.rjust(5, '0')
-    # sf_end_status = final_staff_check ? 'Posted to Web' : %w[Declined Verified].include?(status) ? status : 'Pending'
+    sf_end_status = final_staff_check ? 'Posted to Web' : %w[Declined Verified].include?(status) ? status : 'Pending'
     
     org_map = { Mailing_City__c: 15, Email__c: 7, Primary_Contact_Title__c: 6, Phone__c: 8, Endorsement_Campaign__c: 23 }
     end_type = is_org ? 'Organizational' : 'Individual'
@@ -163,7 +163,10 @@ class EndorserSync
     end
     contact_title = [row[6].to_s, row[10].to_s].map(&:strip).reject(&:empty?).join(', ')
     end_changed = set_if_different(sf_row, :Endorser_Type__c, end_type) || end_changed
-    # end_changed = set_if_different(sf_row, :Verification_Status__c, sf_end_status) || end_changed
+
+    unless sf_end_status == 'Verified'
+      end_changed = set_if_different(sf_row, :Verification_Status__c, sf_end_status) || end_changed
+    end
     end_changed = set_if_different(sf_row, :Address__c, street) || end_changed
     end_changed = set_if_different(sf_row, :Org_Ind_Name__c, name) || end_changed
     end_changed = set_if_different(sf_row, :Contact_Title__c, contact_title) || end_changed
