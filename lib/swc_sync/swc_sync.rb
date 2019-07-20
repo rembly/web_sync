@@ -64,7 +64,7 @@ class SwcSync
     @call_queue = Queue.new
     @queue_consumer = start_request_queue_consumer
     @sf = SalesforceSync.new
-    @wp_client = MysqlConnection.get_connection
+    # @wp_client = MysqlConnection.get_connection
     @api = ThrottledApiClient.new(api_url: "https://#{ENV['SWC_AUDIENCE']}/services/4.0/",
       logger: LOG, token_method: JsonWebToken.method(:swc_token))
   end
