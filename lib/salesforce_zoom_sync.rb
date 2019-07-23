@@ -97,8 +97,8 @@ class SalesforceZoomSync
     @log.debug('Setting OCAT attendance...')
     ocat_1 = valid_ocat_call_users(@zoom_client.ocat_1_participants.dig('participants'))
     ocat_2 = valid_ocat_call_users(@zoom_client.ocat_2_participants.dig('participants'))
-    ocat_1_date = ocat_1.try(:first).dig('join_time')&.to_datetime&.localtime&.to_date
-    ocat_2_date = ocat_2.try(:first).dig('join_time')&.to_datetime&.localtime&.to_date
+    ocat_1_date = ocat_1.any? ? ocat_1.try(:first).dig('join_time')&.to_datetime&.localtime&.to_date : ""
+    ocat_2_date = ocat_2.any? ? ocat_2.try(:first).dig('join_time')&.to_datetime&.localtime&.to_date : ""
     @log.debug("#{ocat_1&.size.to_i} attended OCAT 1 on #{ocat_1_date} and #{ocat_2&.size.to_i} attended OCAT 2 on #{ocat_2_date}")
     # TODO: do we need to email people who RSVPed but missed the call?
     add_ocat_participants(ocat_1, ocat_1_date)
